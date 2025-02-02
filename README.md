@@ -1,6 +1,6 @@
 # arxiv-to-prompt
 
-[![PyPI version](https://badge.fury.io/py/arxiv-to-prompt.svg)](https://pypi.org/project/arxiv-to-prompt/)
+[![PyPI version](https://badge.fury.io/py/arxiv-to-prompt.svg?update=20250202)](https://pypi.org/project/arxiv-to-prompt/)
 [![Tests](https://github.com/takashiishida/arxiv-to-prompt/actions/workflows/tests.yml/badge.svg)](https://github.com/takashiishida/arxiv-to-prompt/actions)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Changelog](https://img.shields.io/github/v/release/takashiishida/arxiv-to-prompt?label=changelog)](https://github.com/takashiishida/arxiv-to-prompt/releases)
