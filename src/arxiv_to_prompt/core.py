@@ -151,8 +151,38 @@ def flatten_tex(directory: str, main_file: str) -> str:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Process \input and \include commands
+            # Process \input and \include commands that are not commented out
             def replace_input(match):
+                # Check if the match is preceded by a comment character
+                line_start = content.rfind('\n', 0, match.start()) + 1
+                line_prefix = content[line_start:match.start()]
+                
+                # If there's a % character in the line prefix that's not escaped,
+                # this command is commented out, so return the original text
+                comment_pos = -1
+                i = 0
+                while i < len(line_prefix):
+                    if line_prefix[i] == '%':
+                        # Check if the % is escaped with a backslash
+                        if i > 0 and line_prefix[i-1] == '\\':
+                            # Count backslashes before %
+                            backslash_count = 0
+                            j = i - 1
+                            while j >= 0 and line_prefix[j] == '\\':
+                                backslash_count += 1
+                                j -= 1
+                            # If odd number of backslashes, % is escaped
+                            if backslash_count % 2 == 1:
+                                i += 1
+                                continue
+                        comment_pos = i
+                        break
+                    i += 1
+                
+                if comment_pos != -1:
+                    return match.group(0)  # Return the original text without processing
+                
+                # Process the command normally
                 input_file = match.group(1)
                 if not input_file.endswith('.tex'):
                     input_file += '.tex'
