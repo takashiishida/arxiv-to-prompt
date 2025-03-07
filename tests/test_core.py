@@ -8,6 +8,7 @@ from arxiv_to_prompt.core import (
     find_main_tex,
     remove_comments_from_lines,
     check_source_available,
+    flatten_tex,
 )
 
 # Test fixtures
@@ -129,3 +130,49 @@ def test_find_main_tex(temp_cache_dir):
     found_main = find_main_tex(str(tex_dir))
     assert found_main == "main.tex"
 
+
+def test_commented_input_commands(temp_cache_dir):
+    """Test that commented-out \\include and \\input commands are ignored."""
+    # Create test directory and files
+    tex_dir = temp_cache_dir / "test_commented_input"
+    tex_dir.mkdir(parents=True)
+    
+    # Create a main file with both regular and commented-out input commands
+    main_file = tex_dir / "main.tex"
+    main_content = """\\documentclass{article}
+\\begin{document}
+% This is a comment with \\input{commented_file1}
+Regular text
+\\input{existing_file}
+More text
+% Another comment with \\include{commented_file2}
+Text with escaped \\% and then % \\input{commented_file3}
+% \\input{nonexistent_file}
+\\end{document}
+"""
+    main_file.write_text(main_content)
+    
+    # Create the file that should be included
+    existing_file = tex_dir / "existing_file.tex"
+    existing_content = "This is content from the existing file."
+    existing_file.write_text(existing_content)
+    
+    # Run the flatten_tex function
+    result = flatten_tex(str(tex_dir), "main.tex")
+    
+    # Check that the existing file was included
+    assert "This is content from the existing file." in result
+    
+    # Check that the commented-out input commands are still present but not processed
+    assert "% This is a comment with \\input{commented_file1}" in result
+    assert "% Another comment with \\include{commented_file2}" in result
+    assert "Text with escaped \\% and then % \\input{commented_file3}" in result
+    assert "% \\input{nonexistent_file}" in result
+    
+    # The commented files should not have been looked for
+    # (if they were, there would be error logs, but we can't easily test for that)
+    # So we'll check that the original text is preserved
+    assert "\\input{commented_file1}" in result
+    assert "\\include{commented_file2}" in result
+    assert "\\input{commented_file3}" in result
+    assert "\\input{nonexistent_file}" in result

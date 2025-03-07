@@ -25,6 +25,9 @@ arxiv-to-prompt 2303.08774 --no-comments
 
 # Copy to clipboard
 arxiv-to-prompt 2303.08774 | pbcopy
+
+# Combine with the `llm` library from https://github.com/simonw/llm to chat about the paper
+arxiv-to-prompt 1706.03762 | llm -s "explain this paper"
 ```
 
 The arXiv ID can be found in the paper's URL. For example, for `https://arxiv.org/abs/2303.08774`, the ID is `2303.08774`. It will automatically download the latest version of the paper, so you don't need to specify the version.
