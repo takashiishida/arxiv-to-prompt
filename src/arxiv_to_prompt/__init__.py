@@ -13,8 +13,20 @@ Example:
 
 from .core import process_latex_source, download_arxiv_source, get_default_cache_dir
 
+# Import version from package metadata
+try:
+    from importlib.metadata import version
+
+    __version__ = version("arxiv-to-prompt")
+except ImportError:
+    # Python < 3.8 fallback
+    from importlib_metadata import version
+
+    __version__ = version("arxiv-to-prompt")
+
 __all__ = [
     "process_latex_source",
     "download_arxiv_source",
     "get_default_cache_dir",
-] 
+    "__version__",
+]
