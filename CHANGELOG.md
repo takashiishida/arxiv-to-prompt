@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.2 (2025-06-29)
+- Added `__version__` support. [#7](https://github.com/takashiishida/arxiv-to-prompt/issues/7)
+
 ## 0.2.1 (2025-06-29)
 - Fixed incorrect file extension handling for \input commands with non-.tex files. [#6](https://github.com/takashiishida/arxiv-to-prompt/issues/6)
 
