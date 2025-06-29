@@ -140,6 +140,14 @@ def remove_comments_from_lines(text: str) -> str:
         result.append(''.join(cleaned_line).rstrip())
     return '\n'.join(result)
 
+def remove_appendix(text: str) -> str:
+    """Remove appendix section and everything after it."""
+    # Find the position of \appendix command
+    appendix_match = re.search(r'\\appendix\b', text)
+    if appendix_match:
+        return text[:appendix_match.start()].rstrip()
+    return text
+
 def flatten_tex(directory: str, main_file: str) -> str:
     """Combine all tex files into one, resolving inputs."""
     def process_file(file_path: str, processed_files: set) -> str:
@@ -201,7 +209,7 @@ def flatten_tex(directory: str, main_file: str) -> str:
 
 def process_latex_source(arxiv_id: str, keep_comments: bool = True, 
                         cache_dir: Optional[str] = None,
-                        use_cache: bool = False) -> Optional[str]:
+                        use_cache: bool = False, remove_appendix_section: bool = False) -> Optional[str]:
     """
     Process LaTeX source files from arXiv and return the combined content.
     
@@ -210,6 +218,7 @@ def process_latex_source(arxiv_id: str, keep_comments: bool = True,
         keep_comments: Whether to keep LaTeX comments in the output
         cache_dir: Custom directory to store downloaded files
         use_cache: Whether to use cached files if they exist (default: False)
+        remove_appendix_section: Whether to remove the appendix section and everything after it
     
     Returns:
         The processed LaTeX content or None if processing fails
@@ -233,6 +242,10 @@ def process_latex_source(arxiv_id: str, keep_comments: bool = True,
     # Process comments if requested
     if not keep_comments:
         content = remove_comments_from_lines(content)
+    
+    # Remove appendix if requested
+    if remove_appendix_section:
+        content = remove_appendix(content)
     
     return content
 

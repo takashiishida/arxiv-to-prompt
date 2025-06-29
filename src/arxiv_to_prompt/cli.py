@@ -22,13 +22,19 @@ def main():
         help=f"Custom directory to store downloaded files (default: {default_cache})",
         default=None
     )
+    parser.add_argument(
+        "--no-appendix",
+        action="store_true",
+        help="Remove the appendix section and everything after it"
+    )
     
     args = parser.parse_args()
     
     content = process_latex_source(
         args.arxiv_id, 
         keep_comments=not args.no_comments,
-        cache_dir=args.cache_dir
+        cache_dir=args.cache_dir,
+        remove_appendix_section=args.no_appendix
     )
     if content:
         print(content)

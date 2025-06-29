@@ -9,6 +9,7 @@ from arxiv_to_prompt.core import (
     remove_comments_from_lines,
     check_source_available,
     flatten_tex,
+    remove_appendix,
 )
 
 # Test fixtures
@@ -176,3 +177,54 @@ Text with escaped \\% and then % \\input{commented_file3}
     assert "\\include{commented_file2}" in result
     assert "\\input{commented_file3}" in result
     assert "\\input{nonexistent_file}" in result
+
+
+def test_remove_appendix():
+    """Test appendix removal functionality."""
+    test_cases = [
+        # Basic appendix removal
+        (
+            "Main content\n\n\\appendix\nAppendix content",
+            "Main content"
+        ),
+        # No appendix to remove
+        (
+            "Main content only",
+            "Main content only"
+        ),
+        # Appendix with sections
+        (
+            "Introduction\n\\section{Method}\nContent\n\\appendix\n\\section{Additional Info}\nMore stuff",
+            "Introduction\n\\section{Method}\nContent"
+        ),
+        # Multiple appendix commands (should remove from first one)
+        (
+            "Content\n\\appendix\nFirst appendix\n\\appendix\nSecond appendix",
+            "Content"
+        ),
+        # Appendix at the beginning
+        (
+            "\\appendix\nAll appendix content",
+            ""
+        ),
+    ]
+    
+    for input_text, expected in test_cases:
+        result = remove_appendix(input_text)
+        assert result == expected, f"Failed for input: {input_text}"
+
+
+def test_process_latex_with_appendix_removal(sample_arxiv_id, temp_cache_dir):
+    """Test processing LaTeX source with appendix removal."""
+    # Test with appendix removal
+    result = process_latex_source(
+        sample_arxiv_id,
+        keep_comments=True,
+        cache_dir=str(temp_cache_dir),
+        remove_appendix_section=True
+    )
+    assert result is not None
+    assert "\\documentclass" in result
+    
+    # Check that appendix was removed (if it existed)
+    assert "\\appendix" not in result
