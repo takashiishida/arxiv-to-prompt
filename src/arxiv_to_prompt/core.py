@@ -192,7 +192,8 @@ def flatten_tex(directory: str, main_file: str) -> str:
                 
                 # Process the command normally
                 input_file = match.group(1)
-                if not input_file.endswith('.tex'):
+                # Only add .tex extension if the file has no extension at all
+                if not os.path.splitext(input_file)[1]:
                     input_file += '.tex'
                 input_path = os.path.join(directory, input_file)
                 return process_file(input_path, processed_files)

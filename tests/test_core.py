@@ -228,3 +228,46 @@ def test_process_latex_with_appendix_removal(sample_arxiv_id, temp_cache_dir):
     
     # Check that appendix was removed (if it existed)
     assert "\\appendix" not in result
+
+
+def test_input_file_extensions(temp_cache_dir):
+    """Test that input files with existing extensions are not modified."""
+    # Create test directory and files
+    tex_dir = temp_cache_dir / "test_extensions"
+    tex_dir.mkdir(parents=True)
+    
+    # Create main file with various input commands
+    main_file = tex_dir / "main.tex"
+    main_content = """\\documentclass{article}
+\\begin{document}
+\\input{chapter1}
+\\input{main.bbl}
+\\input{mystyle.sty}
+\\input{config.cls}
+\\input{already.tex}
+\\end{document}
+"""
+    main_file.write_text(main_content)
+    
+    # Create the files that should be included
+    files_to_create = [
+        ("chapter1.tex", "Chapter 1 content"),
+        ("main.bbl", "Bibliography content"),
+        ("mystyle.sty", "Style content"),
+        ("config.cls", "Class content"),
+        ("already.tex", "Already tex content"),
+    ]
+    
+    for filename, content in files_to_create:
+        file_path = tex_dir / filename
+        file_path.write_text(content)
+    
+    # Run the flatten_tex function
+    result = flatten_tex(str(tex_dir), "main.tex")
+    
+    # Check that all files were included correctly
+    assert "Chapter 1 content" in result
+    assert "Bibliography content" in result
+    assert "Style content" in result
+    assert "Class content" in result
+    assert "Already tex content" in result
