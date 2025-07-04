@@ -64,10 +64,6 @@ Here are some projects and use cases that leverage arxiv-to-prompt:
 
 - [arxiv-latex-mcp](https://github.com/takashiishida/arxiv-latex-mcp): MCP server that uses arxiv-to-prompt to fetch and process arXiv LaTeX sources for precise interpretation of mathematical expressions in scientific papers.
 - [arxiv-tex-ui](https://github.com/takashiishida/arxiv-tex-ui): chat with an llm about an arxiv paper by using the latex source.
+- [paper2slides](https://github.com/takashiishida/paper2slides): transform an arXiv paper into slides.
 
 If you're using arxiv-to-prompt in your project, please submit a pull request to add it to this list!
-
-### References
-
-- Inspired by [files-to-prompt](https://github.com/simonw/files-to-prompt).
-- Reused some code from [paper2slides](https://github.com/takashiishida/paper2slides).
