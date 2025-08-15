@@ -63,7 +63,7 @@ latex_source = process_latex_source("2303.08774", keep_comments=False, remove_ap
 Here are some projects and use cases that leverage arxiv-to-prompt:
 
 - [arxiv-latex-mcp](https://github.com/takashiishida/arxiv-latex-mcp): MCP server that fetch and process arXiv LaTeX sources for precise interpretation of mathematical expressions in papers.
-- [arxiv-tex-ui](https://github.com/takashiishida/arxiv-tex-ui): chat with an llm about an arxiv paper by using the latex source.
+- [arxiv-tex-ui](https://github.com/takashiishida/arxiv-tex-ui): chat with an LLM about an arxiv paper by using the latex source.
 - [paper2slides](https://github.com/takashiishida/paper2slides): transform an arXiv paper into slides.
 - [ArXivToPrompt](https://apps.apple.com/jp/app/arxivtoprompt/id6751013390): iOS app that allows users to easily extract LaTeX source from arXiv papers on their iPhone and copy it to the clipboard for use with LLM apps. 
 
