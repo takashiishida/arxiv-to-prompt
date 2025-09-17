@@ -4,6 +4,7 @@
 [![Tests](https://github.com/takashiishida/arxiv-to-prompt/actions/workflows/tests.yml/badge.svg)](https://github.com/takashiishida/arxiv-to-prompt/actions)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Changelog](https://img.shields.io/github/v/release/takashiishida/arxiv-to-prompt?label=changelog)](https://github.com/takashiishida/arxiv-to-prompt/releases)
+[![Downloads](https://static.pepy.tech/badge/arxiv-to-prompt)](https://pepy.tech/project/arxiv-to-prompt)
 
 A command-line tool to transform arXiv papers into a single LaTeX source that can be used as a prompt for asking LLMs questions about the paper. It downloads the source files, automatically finds the main tex file containing `\documentclass`, and flattens multiple files into a single coherent source by resolving `\input` and `\include` commands. The tool also provides options to remove LaTeX comments and appendix sections from the output (which can be useful to shorten the prompt).
 
