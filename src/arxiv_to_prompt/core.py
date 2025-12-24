@@ -92,14 +92,28 @@ def download_arxiv_source(arxiv_id: str, cache_dir: Optional[str] = None, use_ca
 
 def find_main_tex(directory: str) -> Optional[str]:
     """
-    Find the main .tex file containing documentclass. If there are multiple files,
-    returns the filename of the longest .tex file containing documentclass, since shorter
-    files are typically conference templates or supplementary documents rather than the 
-    main manuscript.
+    Find the main .tex file containing documentclass. 
+    First checks for common naming conventions (main.tex, paper.tex, index.tex).
+    If none found, returns the filename of the longest .tex file containing documentclass,
+    since shorter files are typically conference templates or supplementary documents 
+    rather than the main manuscript.
     """
+    common_names = ['main.tex', 'paper.tex', 'index.tex']
     main_tex_file = None
     max_line_count = 0
 
+    # First pass: check for common naming conventions
+    for file_name in os.listdir(directory):
+        if file_name in common_names:
+            try:
+                with open(os.path.join(directory, file_name), 'r', encoding='utf-8') as file:
+                    lines = file.readlines()
+                    if any('\\documentclass' in line for line in lines):
+                        return file_name
+            except Exception as e:
+                logging.warning(f"Could not read file {file_name}: {e}")
+
+    # Second pass: find the longest .tex file containing documentclass
     for file_name in os.listdir(directory):
         if file_name.endswith('.tex'):
             try:
@@ -208,37 +222,57 @@ def flatten_tex(directory: str, main_file: str) -> str:
     main_file_path = os.path.join(directory, main_file)
     return process_file(main_file_path, set())
 
-def process_latex_source(arxiv_id: str, keep_comments: bool = True, 
+def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = True, 
                         cache_dir: Optional[str] = None,
-                        use_cache: bool = False, remove_appendix_section: bool = False) -> Optional[str]:
+                        use_cache: bool = False, remove_appendix_section: bool = False,
+                        local_folder: Optional[str] = None) -> Optional[str]:
     """
-    Process LaTeX source files from arXiv and return the combined content.
+    Process LaTeX source files from arXiv or a local folder and return the combined content.
     
     Args:
-        arxiv_id: The arXiv ID of the paper
+        arxiv_id: The arXiv ID of the paper (required if local_folder is not provided)
         keep_comments: Whether to keep LaTeX comments in the output
-        cache_dir: Custom directory to store downloaded files
-        use_cache: Whether to use cached files if they exist (default: False)
+        cache_dir: Custom directory to store downloaded files (only used for arXiv)
+        use_cache: Whether to use cached files if they exist (default: False, only used for arXiv)
         remove_appendix_section: Whether to remove the appendix section and everything after it
+        local_folder: Path to a local folder containing TeX files (alternative to arxiv_id)
     
     Returns:
         The processed LaTeX content or None if processing fails
     """
-    base_dir = Path(cache_dir) if cache_dir else get_default_cache_dir()
-    
-    # Download the latest version
-    if not download_arxiv_source(arxiv_id, cache_dir, use_cache):
+    # Determine the directory to process
+    if local_folder:
+        directory = Path(local_folder).expanduser().resolve()
+        
+        # Validate the folder exists
+        if not directory.exists():
+            logging.error(f"Local folder does not exist: {directory}")
+            return None
+        
+        if not directory.is_dir():
+            logging.error(f"Path is not a directory: {directory}")
+            return None
+        
+        logging.info(f"Processing local folder: {directory}")
+    elif arxiv_id:
+        base_dir = Path(cache_dir) if cache_dir else get_default_cache_dir()
+        
+        # Download the latest version
+        if not download_arxiv_source(arxiv_id, cache_dir, use_cache):
+            return None
+        
+        directory = base_dir / arxiv_id
+    else:
+        logging.error("Either arxiv_id or local_folder must be provided")
         return None
-    
-    directory = base_dir / arxiv_id
 
-    main_file = find_main_tex(directory)
+    main_file = find_main_tex(str(directory))
     if not main_file:
         logging.error("Main .tex file not found.")
         return None
 
     # Get the content
-    content = flatten_tex(directory, main_file)
+    content = flatten_tex(str(directory), main_file)
     
     # Process comments if requested
     if not keep_comments:
