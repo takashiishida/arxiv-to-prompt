@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.0 (2025-12-24)
+- Added `--local-folder` option to process LaTeX sources from a local directory.
+
 ## 0.2.2 (2025-06-29)
 - Added `__version__` support. [#7](https://github.com/takashiishida/arxiv-to-prompt/issues/7)
 

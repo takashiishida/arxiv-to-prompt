@@ -1,7 +1,7 @@
 <div align="center">
 <img src="logo.png#gh-light-mode-only" alt="" width="475"><img src="logo.png#gh-dark-mode-only" alt="" width="475">
 
-[![PyPI version](https://badge.fury.io/py/arxiv-to-prompt.svg?update=20250629)](https://pypi.org/project/arxiv-to-prompt/)
+[![PyPI version](https://badge.fury.io/py/arxiv-to-prompt.svg)](https://pypi.org/project/arxiv-to-prompt/)
 [![Tests](https://github.com/takashiishida/arxiv-to-prompt/actions/workflows/tests.yml/badge.svg)](https://github.com/takashiishida/arxiv-to-prompt/actions)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Changelog](https://img.shields.io/github/v/release/takashiishida/arxiv-to-prompt?label=changelog)](https://github.com/takashiishida/arxiv-to-prompt/releases)
@@ -32,6 +32,9 @@ arxiv-to-prompt 2303.08774 --no-appendix
 # Combine options (no comments and no appendix)
 arxiv-to-prompt 2303.08774 --no-comments --no-appendix
 
+# Process a local folder containing TeX files (instead of downloading from arXiv)
+arxiv-to-prompt --local-folder /path/to/tex/files
+
 # Copy to clipboard
 arxiv-to-prompt 2303.08774 | pbcopy
 
@@ -59,6 +62,9 @@ latex_source = process_latex_source("2303.08774", remove_appendix_section=True)
 
 # Combine options (no comments and no appendix)
 latex_source = process_latex_source("2303.08774", keep_comments=False, remove_appendix_section=True)
+
+# Process LaTeX sources from a local folder (instead of downloading from arXiv)
+latex_source = process_latex_source(local_folder="/path/to/tex/files")
 ```
 
 ### Projects Using arxiv-to-prompt
