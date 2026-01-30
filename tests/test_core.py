@@ -153,6 +153,23 @@ def test_find_main_tex(temp_cache_dir):
     assert found_main == "main.tex"
 
 
+def test_find_main_tex_in_subdirectory(temp_cache_dir):
+    """Test finding main tex file in a subdirectory."""
+    # Create test directory with subdirectory
+    tex_dir = temp_cache_dir / "test_tex_subdir"
+    tex_dir.mkdir(parents=True)
+    subdir = tex_dir / "paper"
+    subdir.mkdir()
+
+    # Create main.tex in subdirectory
+    main_file = subdir / "main.tex"
+    main_file.write_text("\\documentclass{article}\n\\begin{document}\nHello\n\\end{document}")
+
+    # Test finding main file in subdirectory
+    found_main = find_main_tex(str(tex_dir))
+    assert found_main == os.path.join("paper", "main.tex")
+
+
 def test_commented_input_commands(temp_cache_dir):
     """Test that commented-out \\include and \\input commands are ignored."""
     # Create test directory and files

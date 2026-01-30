@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.1 (2026-01-30)
+- Search subdirectories for main.tex file. [#9](https://github.com/takashiishida/arxiv-to-prompt/issues/9)
+
 ## 0.5.0 (2026-01-30)
 - Add `--list-sections` and `--section` options to extract specific sections. [#12](https://github.com/takashiishida/arxiv-to-prompt/issues/12)
 

@@ -92,40 +92,55 @@ def download_arxiv_source(arxiv_id: str, cache_dir: Optional[str] = None, use_ca
 
 def find_main_tex(directory: str) -> Optional[str]:
     """
-    Find the main .tex file containing documentclass. 
+    Find the main .tex file containing documentclass.
+    Searches recursively through subdirectories.
     First checks for common naming conventions (main.tex, paper.tex, index.tex).
-    If none found, returns the filename of the longest .tex file containing documentclass,
-    since shorter files are typically conference templates or supplementary documents 
+    If none found, returns the path of the longest .tex file containing documentclass,
+    since shorter files are typically conference templates or supplementary documents
     rather than the main manuscript.
     """
     common_names = ['main.tex', 'paper.tex', 'index.tex']
     main_tex_file = None
     max_line_count = 0
 
-    # First pass: check for common naming conventions
-    for file_name in os.listdir(directory):
-        if file_name in common_names:
-            try:
-                with open(os.path.join(directory, file_name), 'r', encoding='utf-8') as file:
-                    lines = file.readlines()
-                    if any('\\documentclass' in line for line in lines):
-                        return file_name
-            except Exception as e:
-                logging.warning(f"Could not read file {file_name}: {e}")
+    # Walk through directory and subdirectories
+    for root, dirs, files in os.walk(directory):
+        rel_root = os.path.relpath(root, directory)
+
+        # First pass: check for common naming conventions
+        for file_name in files:
+            if file_name in common_names:
+                file_path = os.path.join(root, file_name)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as file:
+                        lines = file.readlines()
+                        if any('\\documentclass' in line for line in lines):
+                            if rel_root == '.':
+                                return file_name
+                            return os.path.join(rel_root, file_name)
+                except Exception as e:
+                    logging.warning(f"Could not read file {file_path}: {e}")
 
     # Second pass: find the longest .tex file containing documentclass
-    for file_name in os.listdir(directory):
-        if file_name.endswith('.tex'):
-            try:
-                with open(os.path.join(directory, file_name), 'r', encoding='utf-8') as file:
-                    lines = file.readlines()
-                    if any('\\documentclass' in line for line in lines):
-                        line_count = len(lines)
-                        if line_count > max_line_count:
-                            main_tex_file = file_name
-                            max_line_count = line_count
-            except Exception as e:
-                logging.warning(f"Could not read file {file_name}: {e}")
+    for root, dirs, files in os.walk(directory):
+        rel_root = os.path.relpath(root, directory)
+
+        for file_name in files:
+            if file_name.endswith('.tex'):
+                file_path = os.path.join(root, file_name)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as file:
+                        lines = file.readlines()
+                        if any('\\documentclass' in line for line in lines):
+                            line_count = len(lines)
+                            if line_count > max_line_count:
+                                if rel_root == '.':
+                                    main_tex_file = file_name
+                                else:
+                                    main_tex_file = os.path.join(rel_root, file_name)
+                                max_line_count = line_count
+                except Exception as e:
+                    logging.warning(f"Could not read file {file_path}: {e}")
 
     return main_tex_file
 
