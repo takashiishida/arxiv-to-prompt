@@ -11,6 +11,7 @@ from arxiv_to_prompt.core import (
     flatten_tex,
     remove_appendix,
 )
+from arxiv_to_prompt.cli import extract_arxiv_id
 
 # Test fixtures
 @pytest.fixture
@@ -271,3 +272,27 @@ def test_input_file_extensions(temp_cache_dir):
     assert "Style content" in result
     assert "Class content" in result
     assert "Already tex content" in result
+
+
+def test_extract_arxiv_id():
+    """Test extracting arxiv ID from URLs and plain IDs."""
+    # Plain IDs should be returned as-is
+    assert extract_arxiv_id("2505.18102") == "2505.18102"
+    assert extract_arxiv_id("2401.12345") == "2401.12345"
+
+    # Extract from abs URLs
+    assert extract_arxiv_id("https://arxiv.org/abs/2505.18102") == "2505.18102"
+    assert extract_arxiv_id("http://arxiv.org/abs/2505.18102") == "2505.18102"
+
+    # Extract from pdf URLs
+    assert extract_arxiv_id("https://arxiv.org/pdf/2505.18102") == "2505.18102"
+    assert extract_arxiv_id("https://arxiv.org/pdf/2505.18102.pdf") == "2505.18102"
+
+    # Strip version suffixes
+    assert extract_arxiv_id("https://arxiv.org/abs/2505.18102v1") == "2505.18102"
+    assert extract_arxiv_id("https://arxiv.org/abs/2505.18102v2") == "2505.18102"
+    assert extract_arxiv_id("https://arxiv.org/pdf/2505.18102v3.pdf") == "2505.18102"
+
+    # Non-arxiv input returned as-is
+    assert extract_arxiv_id("invalid") == "invalid"
+    assert extract_arxiv_id("https://example.com/2505.18102") == "https://example.com/2505.18102"

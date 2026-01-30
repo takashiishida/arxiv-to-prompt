@@ -1,5 +1,15 @@
 import argparse
+import re
 from .core import process_latex_source, get_default_cache_dir
+
+
+def extract_arxiv_id(input_str: str) -> str:
+    """Extract arxiv ID from URL or return input as-is if already an ID."""
+    if "arxiv.org" in input_str:
+        match = re.search(r'arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})(?:v\d+)?(?:\.pdf)?', input_str)
+        if match:
+            return match.group(1)
+    return input_str
 
 def main():
     default_cache = str(get_default_cache_dir())
@@ -11,7 +21,7 @@ def main():
         "arxiv_id",
         nargs="?",
         default=None,
-        help="The arXiv ID of the paper (do not include the version, e.g. v1, v2). Not needed if --local-folder is provided."
+        help="The arXiv ID (e.g. 2303.08774) or URL (e.g. https://arxiv.org/abs/2303.08774). Not needed if --local-folder is provided."
     )
     parser.add_argument(
         "--no-comments",
@@ -44,9 +54,11 @@ def main():
     
     if args.arxiv_id and args.local_folder:
         parser.error("Cannot specify both arXiv ID and --local-folder")
-    
+
+    arxiv_id = extract_arxiv_id(args.arxiv_id) if args.arxiv_id else None
+
     content = process_latex_source(
-        arxiv_id=args.arxiv_id,
+        arxiv_id=arxiv_id,
         keep_comments=not args.no_comments,
         cache_dir=args.cache_dir,
         remove_appendix_section=args.no_appendix,
