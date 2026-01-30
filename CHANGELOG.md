@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.0 (2026-01-30)
+- Add `--list-sections` and `--section` options to extract specific sections. [#12](https://github.com/takashiishida/arxiv-to-prompt/issues/12)
+
 ## 0.4.1 (2026-01-30)
 - `--no-comments` now also removes `\iffalse...\fi` blocks. [#10](https://github.com/takashiishida/arxiv-to-prompt/issues/10)
 

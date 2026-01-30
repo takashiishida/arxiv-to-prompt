@@ -164,6 +164,34 @@ def remove_appendix(text: str) -> str:
         return text[:appendix_match.start()].rstrip()
     return text
 
+
+def list_sections(text: str) -> list:
+    """Extract all section names from LaTeX content."""
+    pattern = r'\\section\*?\{([^}]+)\}'
+    return re.findall(pattern, text)
+
+
+def extract_section(text: str, section_name: str) -> Optional[str]:
+    """Extract content of a specific section (including its subsections)."""
+    # Find the start of the requested section
+    pattern = rf'\\section\*?\{{{re.escape(section_name)}\}}'
+    start_match = re.search(pattern, text)
+    if not start_match:
+        return None
+
+    start_pos = start_match.start()
+
+    # Find the next \section (not subsection) or end of document
+    remaining = text[start_match.end():]
+    end_match = re.search(r'\\section\*?\{', remaining)
+
+    if end_match:
+        end_pos = start_match.end() + end_match.start()
+        return text[start_pos:end_pos].rstrip()
+    else:
+        return text[start_pos:].rstrip()
+
+
 def flatten_tex(directory: str, main_file: str) -> str:
     """Combine all tex files into one, resolving inputs."""
     def process_file(file_path: str, processed_files: set) -> str:

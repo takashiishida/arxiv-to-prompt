@@ -1,6 +1,6 @@
 import argparse
 import re
-from .core import process_latex_source, get_default_cache_dir
+from .core import process_latex_source, get_default_cache_dir, list_sections, extract_section
 
 
 def extract_arxiv_id(input_str: str) -> str:
@@ -45,7 +45,18 @@ def main():
         help="Path to a local folder containing TeX files (alternative to arxiv_id)",
         default=None
     )
-    
+    parser.add_argument(
+        "--list-sections",
+        action="store_true",
+        help="List all section names in the document"
+    )
+    parser.add_argument(
+        "--section",
+        type=str,
+        action="append",
+        help="Extract only the specified section(s). Can be used multiple times."
+    )
+
     args = parser.parse_args()
     
     # Validate that either arxiv_id or local_folder is provided
@@ -64,7 +75,24 @@ def main():
         remove_appendix_section=args.no_appendix,
         local_folder=args.local_folder
     )
-    if content:
+    if not content:
+        return
+
+    if args.list_sections:
+        sections = list_sections(content)
+        for section in sections:
+            print(section)
+    elif args.section:
+        extracted = []
+        for section_name in args.section:
+            section_content = extract_section(content, section_name)
+            if section_content:
+                extracted.append(section_content)
+            else:
+                print(f"Warning: Section '{section_name}' not found", file=__import__('sys').stderr)
+        if extracted:
+            print("\n\n".join(extracted))
+    else:
         print(content)
 
 if __name__ == "__main__":

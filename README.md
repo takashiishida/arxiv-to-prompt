@@ -35,6 +35,12 @@ arxiv-to-prompt 2303.08774 --no-comments --no-appendix
 # Process a local folder containing TeX files (instead of downloading from arXiv)
 arxiv-to-prompt --local-folder /path/to/tex/files
 
+# List all section names in the paper
+arxiv-to-prompt 2303.08774 --list-sections
+
+# Extract only specific sections
+arxiv-to-prompt 2303.08774 --section "Introduction" --section "Methods"
+
 # Copy to clipboard
 arxiv-to-prompt 2303.08774 | pbcopy
 

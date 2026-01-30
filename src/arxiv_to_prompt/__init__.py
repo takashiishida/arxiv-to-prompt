@@ -15,7 +15,7 @@ Example:
     >>> latex_source = process_latex_source(local_folder="/path/to/tex/files")
 """
 
-from .core import process_latex_source, download_arxiv_source, get_default_cache_dir
+from .core import process_latex_source, download_arxiv_source, get_default_cache_dir, list_sections, extract_section
 
 # Import version from package metadata
 try:
@@ -32,5 +32,7 @@ __all__ = [
     "process_latex_source",
     "download_arxiv_source",
     "get_default_cache_dir",
+    "list_sections",
+    "extract_section",
     "__version__",
 ]

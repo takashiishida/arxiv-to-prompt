@@ -10,6 +10,8 @@ from arxiv_to_prompt.core import (
     check_source_available,
     flatten_tex,
     remove_appendix,
+    list_sections,
+    extract_section,
 )
 from arxiv_to_prompt.cli import extract_arxiv_id
 
@@ -314,3 +316,48 @@ def test_extract_arxiv_id():
     # Non-arxiv input returned as-is
     assert extract_arxiv_id("invalid") == "invalid"
     assert extract_arxiv_id("https://example.com/2505.18102") == "https://example.com/2505.18102"
+
+
+def test_list_sections():
+    """Test listing section names."""
+    text = r"""
+\section{Introduction}
+Some intro text.
+\section{Methods}
+Some methods text.
+\subsection{Data}
+Data description.
+\section*{Acknowledgments}
+Thanks.
+"""
+    sections = list_sections(text)
+    assert sections == ["Introduction", "Methods", "Acknowledgments"]
+
+
+def test_extract_section():
+    """Test extracting a specific section."""
+    text = r"""
+\section{Introduction}
+Intro content here.
+\section{Methods}
+Methods content here.
+\subsection{Data Collection}
+Data info.
+\section{Results}
+Results here.
+"""
+    # Extract Methods section (should include subsection)
+    methods = extract_section(text, "Methods")
+    assert methods is not None
+    assert "Methods content here." in methods
+    assert "Data Collection" in methods
+    assert "Data info." in methods
+    assert "Results here." not in methods
+
+    # Extract non-existent section
+    assert extract_section(text, "Discussion") is None
+
+    # Extract last section
+    results = extract_section(text, "Results")
+    assert results is not None
+    assert "Results here." in results
