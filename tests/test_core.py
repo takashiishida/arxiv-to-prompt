@@ -109,9 +109,27 @@ def test_remove_comments_from_lines():
         ("Multiple % comments % here", "Multiple"),
         ("Line with both \\% and % real comment", "Line with both \\% and"),
     ]
-    
+
     for input_text, expected in test_cases:
         assert remove_comments_from_lines(input_text).rstrip() == expected
+
+
+def test_remove_iffalse_blocks():
+    """Test removal of \\iffalse...\\fi blocks."""
+    # Single line
+    assert remove_comments_from_lines("before \\iffalse hidden \\fi after") == "before  after"
+
+    # Multi-line block
+    input_text = "before\n\\iffalse\nhidden\ncontent\n\\fi\nafter"
+    result = remove_comments_from_lines(input_text)
+    assert "hidden" not in result
+    assert "before" in result
+    assert "after" in result
+
+    # Multiple blocks
+    input_text = "a \\iffalse x \\fi b \\iffalse y \\fi c"
+    result = remove_comments_from_lines(input_text)
+    assert result == "a  b  c"
 
 
 def test_find_main_tex(temp_cache_dir):

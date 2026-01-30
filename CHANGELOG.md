@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.1 (2026-01-30)
+- `--no-comments` now also removes `\iffalse...\fi` blocks. [#10](https://github.com/takashiishida/arxiv-to-prompt/issues/10)
+
 ## 0.4.0 (2026-01-30)
 - Accept arXiv URLs in addition to IDs. [#8](https://github.com/takashiishida/arxiv-to-prompt/issues/8)
 

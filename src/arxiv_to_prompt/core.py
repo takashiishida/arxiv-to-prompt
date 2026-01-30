@@ -131,6 +131,8 @@ def find_main_tex(directory: str) -> Optional[str]:
 
 def remove_comments_from_lines(text: str) -> str:
     """Remove LaTeX comments while preserving newlines."""
+    # Remove \iffalse...\fi blocks (commonly used to comment out large sections)
+    text = re.sub(r'\\iffalse\b.*?\\fi\b', '', text, flags=re.DOTALL)
     lines = text.split('\n')
     result = []
     for line in lines:
