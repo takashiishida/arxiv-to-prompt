@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.0 (2026-01-30)
+- Accept arXiv URLs in addition to IDs. [#8](https://github.com/takashiishida/arxiv-to-prompt/issues/8)
+
 ## 0.3.0 (2025-12-24)
 - Added `--local-folder` option to process LaTeX sources from a local directory.
 
