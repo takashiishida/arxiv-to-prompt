@@ -12,6 +12,11 @@ from arxiv_to_prompt.core import (
     remove_appendix,
     list_sections,
     extract_section,
+    SectionNode,
+    parse_section_tree,
+    format_section_tree,
+    find_all_by_name,
+    find_section_by_path,
 )
 from arxiv_to_prompt.cli import extract_arxiv_id
 
@@ -378,3 +383,256 @@ Results here.
     results = extract_section(text, "Results")
     assert results is not None
     assert "Results here." in results
+
+
+def test_parse_section_tree():
+    """Test parsing LaTeX into a hierarchical section tree."""
+    text = r"""
+\section{Introduction}
+Intro text.
+\subsection{Background}
+Background text.
+\subsection{Motivation}
+Motivation text.
+\section{Methods}
+Methods text.
+\subsection{Background}
+Methods background.
+\subsubsection{Details}
+Details text.
+\subsection{Data Collection}
+Data text.
+\section{Results}
+Results text.
+"""
+    tree = parse_section_tree(text)
+
+    # Should have 3 top-level sections
+    assert len(tree) == 3
+    assert tree[0].name == "Introduction"
+    assert tree[1].name == "Methods"
+    assert tree[2].name == "Results"
+
+    # Introduction should have 2 subsections
+    assert len(tree[0].children) == 2
+    assert tree[0].children[0].name == "Background"
+    assert tree[0].children[1].name == "Motivation"
+
+    # Methods should have 2 subsections
+    assert len(tree[1].children) == 2
+    assert tree[1].children[0].name == "Background"
+    assert tree[1].children[1].name == "Data Collection"
+
+    # Methods > Background should have 1 subsubsection
+    assert len(tree[1].children[0].children) == 1
+    assert tree[1].children[0].children[0].name == "Details"
+
+    # Results should have no subsections
+    assert len(tree[2].children) == 0
+
+
+def test_parse_section_tree_levels():
+    """Test that section levels are correctly assigned."""
+    text = r"""
+\section{Sec}
+\subsection{Subsec}
+\subsubsection{Subsubsec}
+"""
+    tree = parse_section_tree(text)
+
+    assert tree[0].level == 0
+    assert tree[0].children[0].level == 1
+    assert tree[0].children[0].children[0].level == 2
+
+
+def test_format_section_tree():
+    """Test formatting section tree with indentation."""
+    text = r"""
+\section{Introduction}
+\subsection{Background}
+\section{Methods}
+\subsection{Data}
+\subsubsection{Collection}
+"""
+    tree = parse_section_tree(text)
+    output = format_section_tree(tree)
+
+    lines = output.split('\n')
+    assert lines[0] == "Introduction"
+    assert lines[1] == "  Background"
+    assert lines[2] == "Methods"
+    assert lines[3] == "  Data"
+    assert lines[4] == "    Collection"
+
+
+def test_find_all_by_name():
+    """Test finding all paths to sections with a given name."""
+    text = r"""
+\section{Introduction}
+\subsection{Background}
+\section{Methods}
+\subsection{Background}
+\section{Results}
+"""
+    tree = parse_section_tree(text)
+
+    # Background appears twice under different parents
+    paths = find_all_by_name(tree, "Background")
+    assert len(paths) == 2
+    assert "Introduction > Background" in paths
+    assert "Methods > Background" in paths
+
+    # Unique name
+    paths = find_all_by_name(tree, "Results")
+    assert paths == ["Results"]
+
+    # Non-existent name
+    paths = find_all_by_name(tree, "Discussion")
+    assert paths == []
+
+
+def test_find_section_by_path_simple():
+    """Test finding section by simple name."""
+    text = r"""
+\section{Introduction}
+\section{Methods}
+\subsection{Data}
+"""
+    tree = parse_section_tree(text)
+
+    # Find by simple name
+    node = find_section_by_path(tree, "Introduction")
+    assert node is not None
+    assert node.name == "Introduction"
+
+    # Find subsection by simple name
+    node = find_section_by_path(tree, "Data")
+    assert node is not None
+    assert node.name == "Data"
+
+
+def test_find_section_by_path_notation():
+    """Test finding section by path notation."""
+    text = r"""
+\section{Introduction}
+\subsection{Background}
+\section{Methods}
+\subsection{Background}
+"""
+    tree = parse_section_tree(text)
+
+    # Find by path notation
+    node = find_section_by_path(tree, "Introduction > Background")
+    assert node is not None
+    assert node.name == "Background"
+    assert node.parent.name == "Introduction"
+
+    node = find_section_by_path(tree, "Methods > Background")
+    assert node is not None
+    assert node.name == "Background"
+    assert node.parent.name == "Methods"
+
+
+def test_find_section_by_path_not_found():
+    """Test that non-existent paths return None."""
+    text = r"""
+\section{Introduction}
+\subsection{Background}
+"""
+    tree = parse_section_tree(text)
+
+    assert find_section_by_path(tree, "NonExistent") is None
+    assert find_section_by_path(tree, "Introduction > NonExistent") is None
+    assert find_section_by_path(tree, "NonExistent > Background") is None
+
+
+def test_extract_section_with_path():
+    """Test extracting section using path notation."""
+    text = r"""
+\section{Introduction}
+Intro text.
+\subsection{Background}
+Intro background.
+\section{Methods}
+Methods text.
+\subsection{Background}
+Methods background.
+\section{Results}
+Results text.
+"""
+    # Extract using path notation
+    content = extract_section(text, "Introduction > Background")
+    assert content is not None
+    assert "Intro background." in content
+    assert "Methods background." not in content
+
+    content = extract_section(text, "Methods > Background")
+    assert content is not None
+    assert "Methods background." in content
+    assert "Intro background." not in content
+
+
+def test_extract_subsection_boundaries():
+    """Test that subsection extraction stops at correct boundary."""
+    text = r"""
+\section{Methods}
+Methods intro.
+\subsection{First}
+First content.
+\subsection{Second}
+Second content.
+\section{Results}
+Results content.
+"""
+    # Extract first subsection - should stop at second subsection
+    content = extract_section(text, "First")
+    assert content is not None
+    assert "First content." in content
+    assert "Second content." not in content
+
+    # Extract second subsection - should stop at Results section
+    content = extract_section(text, "Second")
+    assert content is not None
+    assert "Second content." in content
+    assert "Results content." not in content
+
+
+def test_extract_section_includes_subsections():
+    """Test that extracting a section includes all its subsections."""
+    text = r"""
+\section{Methods}
+Methods intro.
+\subsection{Data}
+Data info.
+\subsubsection{Collection}
+Collection details.
+\subsection{Analysis}
+Analysis info.
+\section{Results}
+Results content.
+"""
+    content = extract_section(text, "Methods")
+    assert content is not None
+    assert "Methods intro." in content
+    assert "Data info." in content
+    assert "Collection details." in content
+    assert "Analysis info." in content
+    assert "Results content." not in content
+
+
+def test_section_tree_with_starred_sections():
+    """Test that starred sections are correctly parsed."""
+    text = r"""
+\section*{Introduction}
+Intro.
+\subsection*{Background}
+Background.
+\section{Methods}
+Methods.
+"""
+    tree = parse_section_tree(text)
+
+    assert len(tree) == 2
+    assert tree[0].name == "Introduction"
+    assert tree[0].children[0].name == "Background"
+    assert tree[1].name == "Methods"

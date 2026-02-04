@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 (2026-02-04)
+- Add `\subsection` and `\subsubsection` support to `--list-sections` and `--section`. [#13](https://github.com/takashiishida/arxiv-to-prompt/issues/13)
+  - `--list-sections` now shows indented hierarchy
+  - `--section` supports path notation (e.g., `--section "Methods > Background"`) for disambiguation
+  - Ambiguous section names show helpful error with available paths
+
 ## 0.5.1 (2026-01-30)
 - Search subdirectories for main.tex file. [#9](https://github.com/takashiishida/arxiv-to-prompt/issues/9)
 

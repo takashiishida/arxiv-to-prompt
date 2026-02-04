@@ -35,11 +35,27 @@ arxiv-to-prompt 2303.08774 --no-comments --no-appendix
 # Process a local folder containing TeX files (instead of downloading from arXiv)
 arxiv-to-prompt --local-folder /path/to/tex/files
 
-# List all section names in the paper
-arxiv-to-prompt 2303.08774 --list-sections
+# List all sections (with subsections indented)
+arxiv-to-prompt 2307.09288 --list-sections
+# Introduction
+# Pretraining
+#   Pretraining Data
+#   Training Details
+#     Training Hardware \& Carbon Footprint
+#   ...
 
-# Extract only specific sections
-arxiv-to-prompt 2303.08774 --section "Introduction" --section "Methods"
+# Extract specific sections
+arxiv-to-prompt 2307.09288 --section "Introduction" --section "Pretraining"
+
+# Ambiguous names show a helpful error
+arxiv-to-prompt 2307.09288 --section "Human Evaluation"
+# Warning: 'Human Evaluation' is ambiguous. Found at:
+#   - Fine-tuning > RLHF Results > Human Evaluation
+#   - Appendix > Additional Details for Fine-tuning > Human Evaluation
+# Use path notation to disambiguate.
+
+# Use path notation when the same name appears multiple times
+arxiv-to-prompt 2307.09288 --section "Fine-tuning > RLHF Results > Human Evaluation"
 
 # Copy to clipboard
 arxiv-to-prompt 2303.08774 | pbcopy

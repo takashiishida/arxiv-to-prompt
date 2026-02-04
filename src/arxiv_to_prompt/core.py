@@ -3,6 +3,7 @@ import os
 import tarfile
 import shutil
 from typing import Optional, List
+from dataclasses import dataclass, field
 import re
 from pathlib import Path
 import requests
@@ -186,25 +187,162 @@ def list_sections(text: str) -> list:
     return re.findall(pattern, text)
 
 
-def extract_section(text: str, section_name: str) -> Optional[str]:
-    """Extract content of a specific section (including its subsections)."""
-    # Find the start of the requested section
-    pattern = rf'\\section\*?\{{{re.escape(section_name)}\}}'
-    start_match = re.search(pattern, text)
-    if not start_match:
+@dataclass
+class SectionNode:
+    """Represents a section/subsection/subsubsection in the LaTeX document tree."""
+    level: int  # 0=section, 1=subsection, 2=subsubsection
+    name: str
+    start_pos: int
+    end_pos: int = -1  # -1 means end of document
+    children: List['SectionNode'] = field(default_factory=list)
+    parent: Optional['SectionNode'] = None
+
+
+def parse_section_tree(text: str) -> List[SectionNode]:
+    """
+    Build a hierarchical tree from LaTeX section commands.
+
+    Returns a list of top-level section nodes, each containing their subsections as children.
+    """
+    # Match section, subsection, and subsubsection commands
+    pattern = r'\\(section|subsection|subsubsection)\*?\{([^}]+)\}'
+
+    level_map = {'section': 0, 'subsection': 1, 'subsubsection': 2}
+
+    # Find all section commands with their positions
+    matches = list(re.finditer(pattern, text))
+
+    if not matches:
+        return []
+
+    # Create nodes for all sections
+    all_nodes = []
+    for match in matches:
+        level = level_map[match.group(1)]
+        name = match.group(2)
+        start_pos = match.start()
+        all_nodes.append(SectionNode(level=level, name=name, start_pos=start_pos))
+
+    # Calculate end positions (each section ends where the next same-or-higher level starts)
+    for i, node in enumerate(all_nodes):
+        # Find next section at same or higher (lower number) level
+        for j in range(i + 1, len(all_nodes)):
+            if all_nodes[j].level <= node.level:
+                node.end_pos = all_nodes[j].start_pos
+                break
+        # If no next section found at same/higher level, end at document end
+        if node.end_pos == -1:
+            node.end_pos = len(text)
+
+    # Build tree structure
+    root_nodes: List[SectionNode] = []
+    section_stack: List[SectionNode] = []
+
+    for node in all_nodes:
+        # Pop from stack until we find a parent at a higher level
+        while section_stack and section_stack[-1].level >= node.level:
+            section_stack.pop()
+
+        if section_stack:
+            # This node is a child of the top of the stack
+            node.parent = section_stack[-1]
+            section_stack[-1].children.append(node)
+        else:
+            # This is a root node
+            root_nodes.append(node)
+
+        section_stack.append(node)
+
+    return root_nodes
+
+
+def format_section_tree(nodes: List[SectionNode], indent: int = 0) -> str:
+    """
+    Format section tree with indentation for display.
+
+    Returns a string with each section name on its own line, indented by level.
+    """
+    lines = []
+    for node in nodes:
+        lines.append("  " * indent + node.name)
+        if node.children:
+            lines.append(format_section_tree(node.children, indent + 1))
+    return "\n".join(lines)
+
+
+def find_all_by_name(nodes: List[SectionNode], name: str, parent_path: str = "") -> List[str]:
+    """
+    Find all paths to sections with the given name.
+
+    Returns a list of full paths (e.g., ["Introduction > Background", "Methods > Background"])
+    """
+    results = []
+    for node in nodes:
+        current_path = f"{parent_path} > {node.name}" if parent_path else node.name
+        if node.name == name:
+            results.append(current_path)
+        if node.children:
+            results.extend(find_all_by_name(node.children, name, current_path))
+    return results
+
+
+def find_section_by_path(nodes: List[SectionNode], path: str) -> Optional[SectionNode]:
+    """
+    Find a section by path notation (e.g., "Methods > Background").
+
+    If path contains no " > ", searches for an exact name match at any level.
+    If path contains " > ", follows the hierarchy.
+    """
+    parts = [p.strip() for p in path.split(" > ")]
+
+    if len(parts) == 1:
+        # Simple name lookup - find first match at any level
+        def find_first(nodes: List[SectionNode], name: str) -> Optional[SectionNode]:
+            for node in nodes:
+                if node.name == name:
+                    return node
+                if node.children:
+                    result = find_first(node.children, name)
+                    if result:
+                        return result
+            return None
+        return find_first(nodes, parts[0])
+
+    # Path notation - follow the hierarchy
+    current_nodes = nodes
+    current_node = None
+
+    for part in parts:
+        found = None
+        for node in current_nodes:
+            if node.name == part:
+                found = node
+                break
+        if not found:
+            return None
+        current_node = found
+        current_nodes = found.children
+
+    return current_node
+
+
+def extract_section(text: str, section_path: str) -> Optional[str]:
+    """
+    Extract content of a specific section, subsection, or subsubsection.
+
+    Args:
+        text: The LaTeX content
+        section_path: Section name or path (e.g., "Methods" or "Methods > Background")
+
+    Returns:
+        The section content including any subsections, or None if not found.
+    """
+    tree = parse_section_tree(text)
+    node = find_section_by_path(tree, section_path)
+    if not node:
         return None
 
-    start_pos = start_match.start()
-
-    # Find the next \section (not subsection) or end of document
-    remaining = text[start_match.end():]
-    end_match = re.search(r'\\section\*?\{', remaining)
-
-    if end_match:
-        end_pos = start_match.end() + end_match.start()
-        return text[start_pos:end_pos].rstrip()
-    else:
-        return text[start_pos:].rstrip()
+    return text[node.start_pos:node.end_pos].rstrip()
 
 
 def flatten_tex(directory: str, main_file: str) -> str:

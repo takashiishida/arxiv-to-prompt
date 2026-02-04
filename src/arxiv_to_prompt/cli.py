@@ -1,6 +1,14 @@
 import argparse
 import re
-from .core import process_latex_source, get_default_cache_dir, list_sections, extract_section
+from .core import (
+    process_latex_source,
+    get_default_cache_dir,
+    list_sections,
+    extract_section,
+    parse_section_tree,
+    format_section_tree,
+    find_all_by_name,
+)
 
 
 def extract_arxiv_id(input_str: str) -> str:
@@ -79,17 +87,28 @@ def main():
         return
 
     if args.list_sections:
-        sections = list_sections(content)
-        for section in sections:
-            print(section)
+        tree = parse_section_tree(content)
+        print(format_section_tree(tree))
     elif args.section:
+        import sys
+        tree = parse_section_tree(content)
         extracted = []
-        for section_name in args.section:
-            section_content = extract_section(content, section_name)
+        for section_path in args.section:
+            # Check for ambiguity only if not using path notation
+            if " > " not in section_path:
+                matching_paths = find_all_by_name(tree, section_path)
+                if len(matching_paths) > 1:
+                    print(f"Warning: '{section_path}' is ambiguous. Found at:", file=sys.stderr)
+                    for path in matching_paths:
+                        print(f"  - {path}", file=sys.stderr)
+                    print("Use path notation to disambiguate.", file=sys.stderr)
+                    continue
+
+            section_content = extract_section(content, section_path)
             if section_content:
                 extracted.append(section_content)
             else:
-                print(f"Warning: Section '{section_name}' not found", file=__import__('sys').stderr)
+                print(f"Warning: Section '{section_path}' not found", file=sys.stderr)
         if extracted:
             print("\n\n".join(extracted))
     else:
