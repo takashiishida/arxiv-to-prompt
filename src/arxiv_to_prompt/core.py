@@ -4,6 +4,7 @@ import tarfile
 import shutil
 import tempfile
 import hashlib
+import uuid
 from typing import Optional, List
 from dataclasses import dataclass, field
 import re
@@ -13,7 +14,7 @@ from filelock import FileLock, Timeout
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-_CACHE_COMPLETE_MARKER = ".complete"
+_CACHE_COMPLETE_MARKER = ".arxiv_cache_complete"
 
 def get_default_cache_dir() -> Path:
     """Get the default cache directory for downloaded files."""
@@ -63,6 +64,8 @@ def _extract_tar_safely(tar_path: Path, extract_to: Path) -> None:
             member_path = Path(member.name)
             if member_path.is_absolute() or ".." in member_path.parts:
                 raise ValueError(f"Unsafe path in tar archive: {member.name}")
+            if member.issym() or member.islnk():
+                raise ValueError(f"Link entry in tar archive is not allowed: {member.name}")
         try:
             tar.extractall(path=extract_to, filter="data")
         except TypeError:
@@ -106,23 +109,18 @@ def download_arxiv_source(
 
     try:
         with FileLock(str(lock_path), timeout=lock_timeout_seconds):
-            # Fast path for valid cache if requested.
-            if use_cache and _is_valid_cache_dir(directory):
-                logging.info(f"Directory {directory} already exists, using cached version.")
-                return True
+            if directory.exists():
+                # Fast path for valid cache if requested.
+                if use_cache and _is_valid_cache_dir(directory):
+                    logging.info(f"Directory {directory} already exists, using cached version.")
+                    return True
 
-            # Repair stale cache if allowed.
-            if directory.exists() and not _is_valid_cache_dir(directory):
-                if stale_cache_repair:
-                    logging.warning(f"Found incomplete cache at {directory}; rebuilding.")
-                    _safe_rmtree(directory)
-                elif use_cache:
+                if use_cache and not stale_cache_repair:
                     logging.error(f"Cached directory {directory} is incomplete and stale cache repair is disabled.")
                     return False
 
-            # Redownload on non-cache mode.
-            if not use_cache and directory.exists():
-                _safe_rmtree(directory)
+                if not _is_valid_cache_dir(directory):
+                    logging.warning(f"Found incomplete cache at {directory}; rebuilding.")
 
             # Check availability only when we need to download.
             if not check_source_available(arxiv_id):
@@ -153,9 +151,36 @@ def download_arxiv_source(
 
                 (extracted_dir / _CACHE_COMPLETE_MARKER).write_text("ok\n", encoding="utf-8")
 
-                if directory.exists():
-                    _safe_rmtree(directory)
-                os.replace(str(extracted_dir), str(directory))
+                backup_dir = None
+                published = False
+                try:
+                    if directory.exists():
+                        backup_dir = directory.parent / f"{directory.name}.old.{uuid.uuid4().hex}"
+                        os.replace(str(directory), str(backup_dir))
+
+                    os.replace(str(extracted_dir), str(directory))
+                    published = True
+                except Exception as publish_error:
+                    rollback_error = None
+                    rollback_succeeded = False
+                    if backup_dir and backup_dir.exists() and not directory.exists():
+                        try:
+                            os.replace(str(backup_dir), str(directory))
+                            rollback_succeeded = True
+                        except Exception as rollback_exc:
+                            rollback_error = rollback_exc
+
+                    if rollback_error is not None:
+                        raise RuntimeError(
+                            f"Failed to publish new cache and rollback failed: {rollback_error}"
+                        ) from publish_error
+                    if rollback_succeeded:
+                        raise RuntimeError("Failed to publish new cache; rolled back to previous cache.") from publish_error
+                    raise RuntimeError("Failed to publish new cache.") from publish_error
+                finally:
+                    if published and backup_dir and backup_dir.exists():
+                        _safe_rmtree(backup_dir)
+
                 logging.info(f"Source files downloaded and extracted to {directory}/")
                 return True
             finally:
