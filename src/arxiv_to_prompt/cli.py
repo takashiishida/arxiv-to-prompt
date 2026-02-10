@@ -64,6 +64,12 @@ def main():
         action="append",
         help="Extract only the specified section(s). Can be used multiple times."
     )
+    parser.add_argument(
+        "--lock-timeout",
+        type=float,
+        default=120.0,
+        help="Seconds to wait for the per-paper cache lock when another process is downloading",
+    )
 
     args = parser.parse_args()
     
@@ -81,7 +87,8 @@ def main():
         keep_comments=not args.no_comments,
         cache_dir=args.cache_dir,
         remove_appendix_section=args.no_appendix,
-        local_folder=args.local_folder
+        local_folder=args.local_folder,
+        lock_timeout_seconds=args.lock_timeout,
     )
     if not content:
         return

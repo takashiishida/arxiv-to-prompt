@@ -2,13 +2,18 @@ import logging
 import os
 import tarfile
 import shutil
+import tempfile
+import hashlib
 from typing import Optional, List
 from dataclasses import dataclass, field
 import re
 from pathlib import Path
 import requests
+from filelock import FileLock, Timeout
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+_CACHE_COMPLETE_MARKER = ".complete"
 
 def get_default_cache_dir() -> Path:
     """Get the default cache directory for downloaded files."""
@@ -22,7 +27,56 @@ def get_default_cache_dir() -> Path:
     return cache_dir
 
 
-def download_arxiv_source(arxiv_id: str, cache_dir: Optional[str] = None, use_cache: bool = False) -> bool:
+def _cache_has_tex_files(directory: Path) -> bool:
+    """Return True if the directory contains at least one .tex file recursively."""
+    return any(directory.rglob("*.tex"))
+
+
+def _is_valid_cache_dir(directory: Path) -> bool:
+    """Return True if a cache directory looks complete and usable."""
+    if not directory.exists() or not directory.is_dir():
+        return False
+    marker_path = directory / _CACHE_COMPLETE_MARKER
+    return marker_path.is_file() and _cache_has_tex_files(directory)
+
+
+def _safe_rmtree(path: Path) -> None:
+    """Best-effort directory removal that never raises."""
+    try:
+        shutil.rmtree(path)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logging.warning(f"Failed to remove directory {path}: {e}")
+
+
+def _get_lock_path(base_dir: Path, arxiv_id: str) -> Path:
+    """Return lock path for a given arXiv ID."""
+    lock_key = hashlib.sha256(arxiv_id.encode("utf-8")).hexdigest()
+    return base_dir / ".locks" / f"{lock_key}.lock"
+
+
+def _extract_tar_safely(tar_path: Path, extract_to: Path) -> None:
+    """Extract tar file while blocking path traversal entries."""
+    with tarfile.open(tar_path) as tar:
+        for member in tar.getmembers():
+            member_path = Path(member.name)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise ValueError(f"Unsafe path in tar archive: {member.name}")
+        try:
+            tar.extractall(path=extract_to, filter="data")
+        except TypeError:
+            # Python < 3.12 does not support extraction filters.
+            tar.extractall(path=extract_to)
+
+
+def download_arxiv_source(
+    arxiv_id: str,
+    cache_dir: Optional[str] = None,
+    use_cache: bool = False,
+    lock_timeout_seconds: float = 120.0,
+    stale_cache_repair: bool = True,
+) -> bool:
     """
     Download source files from arXiv.
     
@@ -30,65 +84,88 @@ def download_arxiv_source(arxiv_id: str, cache_dir: Optional[str] = None, use_ca
         arxiv_id: The arXiv ID of the paper
         cache_dir: Custom directory to store downloaded files
         use_cache: Whether to use cached files if they exist (default: False)
+        lock_timeout_seconds: Max seconds to wait for the per-paper cache lock
+        stale_cache_repair: Whether to remove and rebuild incomplete/corrupt cache dirs
     
     Returns:
         bool: True if download successful, False if failed (including when source not available)
     """
+    # Use provided cache_dir or default
+    base_dir = Path(cache_dir) if cache_dir else get_default_cache_dir()
+    directory = base_dir / arxiv_id
+    lock_path = _get_lock_path(base_dir, arxiv_id)
+    staging_root = base_dir / ".staging"
+
     try:
-        # First check if tex source is available
-        if not check_source_available(arxiv_id):
-            logging.warning(f"TeX source files not available for {arxiv_id}")
-            return False
-        
-        # Use provided cache_dir or default
-        base_dir = Path(cache_dir) if cache_dir else get_default_cache_dir()
-        
-        # Always use latest version by not specifying version in URL
-        url = f'https://arxiv.org/e-print/{arxiv_id}'
-        
-        # Set up directory
-        directory = base_dir / arxiv_id
-        if use_cache and directory.exists():
-            logging.info(f"Directory {directory} already exists, using cached version.")
-            return True
-        
-        # Clean up existing directory if not using cache
-        if directory.exists():
-            shutil.rmtree(directory)
-        
-        # Create temporary directory for tar.gz file
-        temp_dir = base_dir / 'temp'
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        tar_path = temp_dir / f'{arxiv_id}.tar.gz'
-        
-        # Download the file
-        logging.info(f"Downloading source from {url}")
-        headers = {
-            'User-Agent': 'Mozilla/5.0'
-        }
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        # Save and extract
-        with open(tar_path, 'wb') as file:
-            file.write(response.content)
-        
-        directory.mkdir(parents=True, exist_ok=True)
-        with tarfile.open(tar_path) as tar:
-            tar.extractall(path=directory)
-        
-        # Clean up temporary files
-        tar_path.unlink()
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
-            
-        logging.info(f"Source files downloaded and extracted to {directory}/")
-        return True
-        
+        base_dir.mkdir(parents=True, exist_ok=True)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        staging_root.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logging.error(f"Failed to initialize cache directories in {base_dir}: {e}")
+        return False
+
+    try:
+        with FileLock(str(lock_path), timeout=lock_timeout_seconds):
+            # Fast path for valid cache if requested.
+            if use_cache and _is_valid_cache_dir(directory):
+                logging.info(f"Directory {directory} already exists, using cached version.")
+                return True
+
+            # Repair stale cache if allowed.
+            if directory.exists() and not _is_valid_cache_dir(directory):
+                if stale_cache_repair:
+                    logging.warning(f"Found incomplete cache at {directory}; rebuilding.")
+                    _safe_rmtree(directory)
+                elif use_cache:
+                    logging.error(f"Cached directory {directory} is incomplete and stale cache repair is disabled.")
+                    return False
+
+            # Redownload on non-cache mode.
+            if not use_cache and directory.exists():
+                _safe_rmtree(directory)
+
+            # Check availability only when we need to download.
+            if not check_source_available(arxiv_id):
+                logging.warning(f"TeX source files not available for {arxiv_id}")
+                return False
+
+            # Always use latest version by not specifying version in URL.
+            url = f'https://arxiv.org/e-print/{arxiv_id}'
+            logging.info(f"Downloading source from {url}")
+            headers = {'User-Agent': 'Mozilla/5.0'}
+
+            # Build in isolated staging and atomically publish to cache path.
+            staging_dir = Path(tempfile.mkdtemp(prefix=f"{arxiv_id}.", dir=staging_root))
+            extracted_dir = staging_dir / "extracted"
+            tar_path = staging_dir / "source.tar"
+
+            try:
+                response = requests.get(url, headers=headers, timeout=30)
+                response.raise_for_status()
+                with open(tar_path, 'wb') as file:
+                    file.write(response.content)
+
+                extracted_dir.mkdir(parents=True, exist_ok=True)
+                _extract_tar_safely(tar_path, extracted_dir)
+
+                if not _cache_has_tex_files(extracted_dir):
+                    raise ValueError("Downloaded archive does not contain any .tex files")
+
+                (extracted_dir / _CACHE_COMPLETE_MARKER).write_text("ok\n", encoding="utf-8")
+
+                if directory.exists():
+                    _safe_rmtree(directory)
+                os.replace(str(extracted_dir), str(directory))
+                logging.info(f"Source files downloaded and extracted to {directory}/")
+                return True
+            finally:
+                _safe_rmtree(staging_dir)
+
+    except Timeout:
+        logging.error(f"Timed out waiting for download lock for {arxiv_id} after {lock_timeout_seconds} seconds")
+        return False
     except Exception as e:
         logging.error(f"Error downloading/extracting source: {e}")
-        if directory.exists():
-            shutil.rmtree(directory)  # Clean up failed download
         return False
 
 def find_main_tex(directory: str) -> Optional[str]:
@@ -408,7 +485,8 @@ def flatten_tex(directory: str, main_file: str) -> str:
 def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = True, 
                         cache_dir: Optional[str] = None,
                         use_cache: bool = False, remove_appendix_section: bool = False,
-                        local_folder: Optional[str] = None) -> Optional[str]:
+                        local_folder: Optional[str] = None,
+                        lock_timeout_seconds: float = 120.0) -> Optional[str]:
     """
     Process LaTeX source files from arXiv or a local folder and return the combined content.
     
@@ -419,6 +497,7 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
         use_cache: Whether to use cached files if they exist (default: False, only used for arXiv)
         remove_appendix_section: Whether to remove the appendix section and everything after it
         local_folder: Path to a local folder containing TeX files (alternative to arxiv_id)
+        lock_timeout_seconds: Max seconds to wait for the per-paper cache lock
     
     Returns:
         The processed LaTeX content or None if processing fails
@@ -441,7 +520,12 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
         base_dir = Path(cache_dir) if cache_dir else get_default_cache_dir()
         
         # Download the latest version
-        if not download_arxiv_source(arxiv_id, cache_dir, use_cache):
+        if not download_arxiv_source(
+            arxiv_id,
+            cache_dir,
+            use_cache,
+            lock_timeout_seconds=lock_timeout_seconds,
+        ):
             return None
         
         directory = base_dir / arxiv_id
@@ -488,4 +572,4 @@ def check_source_available(arxiv_id: str) -> bool:
         logging.error(f"Error checking source availability: {e}")
         return False
     finally:
-        session.close() 
+        session.close()

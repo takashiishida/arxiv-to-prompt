@@ -1,6 +1,10 @@
 import os
+import io
+import tarfile
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 import pytest
+from filelock import FileLock
 from arxiv_to_prompt.core import (
     process_latex_source,
     download_arxiv_source,
@@ -17,8 +21,32 @@ from arxiv_to_prompt.core import (
     format_section_tree,
     find_all_by_name,
     find_section_by_path,
+    _CACHE_COMPLETE_MARKER,
+    _get_lock_path,
+    _is_valid_cache_dir,
 )
 from arxiv_to_prompt.cli import extract_arxiv_id
+
+
+class _FakeResponse:
+    def __init__(self, content: bytes):
+        self.content = content
+
+    def raise_for_status(self):
+        return None
+
+
+def _make_tar_bytes(files: dict) -> bytes:
+    """Build a gzipped tar archive in memory."""
+    tar_buffer = io.BytesIO()
+    with tarfile.open(fileobj=tar_buffer, mode="w:gz") as tar:
+        for filename, content in files.items():
+            encoded = content.encode("utf-8")
+            info = tarfile.TarInfo(name=filename)
+            info.size = len(encoded)
+            tar.addfile(info, io.BytesIO(encoded))
+    return tar_buffer.getvalue()
+
 
 # Test fixtures
 @pytest.fixture
@@ -636,3 +664,91 @@ Methods.
     assert tree[0].name == "Introduction"
     assert tree[0].children[0].name == "Background"
     assert tree[1].name == "Methods"
+
+
+def test_use_cache_skips_network_when_cache_is_valid(temp_cache_dir, monkeypatch):
+    """When cache is already valid, use_cache=True should avoid network calls."""
+    arxiv_id = "9999.00001"
+    cache_dir = temp_cache_dir / arxiv_id
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "main.tex").write_text("\\documentclass{article}")
+    (cache_dir / _CACHE_COMPLETE_MARKER).write_text("ok\n")
+
+    def _should_not_be_called(*args, **kwargs):
+        raise AssertionError("Network path should not be called for valid cache")
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", _should_not_be_called)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", _should_not_be_called)
+
+    assert download_arxiv_source(arxiv_id, str(temp_cache_dir), use_cache=True)
+
+
+def test_use_cache_repairs_incomplete_cache(temp_cache_dir, monkeypatch):
+    """Incomplete cache directories should be rebuilt when use_cache=True."""
+    arxiv_id = "9999.00002"
+    cache_dir = temp_cache_dir / arxiv_id
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "partial.txt").write_text("incomplete")
+
+    tar_bytes = _make_tar_bytes({"paper/main.tex": "\\documentclass{article}"})
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    assert download_arxiv_source(arxiv_id, str(temp_cache_dir), use_cache=True)
+    assert _is_valid_cache_dir(cache_dir)
+
+
+def test_download_parallel_same_id_no_race_crash(temp_cache_dir, monkeypatch):
+    """Concurrent downloads of the same ID should not fail due to races."""
+    arxiv_id = "9999.00003"
+    tar_bytes = _make_tar_bytes({"main.tex": "\\documentclass{article}"})
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    def _run_once(_):
+        return download_arxiv_source(
+            arxiv_id,
+            str(temp_cache_dir),
+            use_cache=False,
+            lock_timeout_seconds=10.0,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(_run_once, range(16)))
+
+    assert all(results)
+    assert _is_valid_cache_dir(temp_cache_dir / arxiv_id)
+
+
+def test_download_lock_timeout_returns_false(temp_cache_dir, monkeypatch):
+    """Caller should get False when lock wait times out."""
+    arxiv_id = "9999.00004"
+    lock_path = _get_lock_path(temp_cache_dir, arxiv_id)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr(
+        "arxiv_to_prompt.core.requests.get",
+        lambda *a, **k: _FakeResponse(_make_tar_bytes({"main.tex": "\\documentclass{article}"})),
+    )
+
+    with FileLock(str(lock_path), timeout=1):
+        assert not download_arxiv_source(
+            arxiv_id,
+            str(temp_cache_dir),
+            use_cache=False,
+            lock_timeout_seconds=0.01,
+        )
+
+
+def test_download_rejects_unsafe_tar_paths(temp_cache_dir, monkeypatch):
+    """Path traversal entries in tar archives should be rejected."""
+    arxiv_id = "9999.00005"
+    tar_bytes = _make_tar_bytes({"../escape.tex": "bad"})
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    assert not download_arxiv_source(arxiv_id, str(temp_cache_dir), use_cache=False)
+    assert not (temp_cache_dir / arxiv_id).exists()
