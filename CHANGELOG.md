@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 (2026-02-11)
+- Make arXiv source cache parallel-safe with file locking (`filelock`). [#16](https://github.com/takashiishida/arxiv-to-prompt/pull/16)
+  - Concurrent downloads of the same paper no longer race or corrupt the cache
+  - Atomic cache publish with rollback on failure
+  - Safe tar extraction blocks path traversal, symlinks, and hardlinks
+  - New `--lock-timeout` option (default 120s) to control lock wait time
+  - Incomplete/corrupt cache directories are detected and rebuilt automatically
+
 ## 0.6.0 (2026-02-04)
 - Add `\subsection` and `\subsubsection` support to `--list-sections` and `--section`. [#13](https://github.com/takashiishida/arxiv-to-prompt/issues/13)
   - `--list-sections` now shows indented hierarchy
