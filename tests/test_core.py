@@ -1,6 +1,11 @@
 import os
+import io
+import tarfile
+import shutil
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 import pytest
+from filelock import FileLock
 from arxiv_to_prompt.core import (
     process_latex_source,
     download_arxiv_source,
@@ -17,8 +22,43 @@ from arxiv_to_prompt.core import (
     format_section_tree,
     find_all_by_name,
     find_section_by_path,
+    _CACHE_COMPLETE_MARKER,
+    _get_lock_path,
+    _is_valid_cache_dir,
 )
 from arxiv_to_prompt.cli import extract_arxiv_id
+
+
+class _FakeResponse:
+    def __init__(self, content: bytes):
+        self.content = content
+
+    def raise_for_status(self):
+        return None
+
+
+def _make_tar_bytes(files: dict) -> bytes:
+    """Build a gzipped tar archive in memory."""
+    tar_buffer = io.BytesIO()
+    with tarfile.open(fileobj=tar_buffer, mode="w:gz") as tar:
+        for filename, content in files.items():
+            encoded = content.encode("utf-8")
+            info = tarfile.TarInfo(name=filename)
+            info.size = len(encoded)
+            tar.addfile(info, io.BytesIO(encoded))
+    return tar_buffer.getvalue()
+
+
+def _make_tar_with_link(link_name: str, link_target: str, hard_link: bool = False) -> bytes:
+    """Build a gzipped tar archive containing a single symlink or hardlink member."""
+    tar_buffer = io.BytesIO()
+    with tarfile.open(fileobj=tar_buffer, mode="w:gz") as tar:
+        info = tarfile.TarInfo(name=link_name)
+        info.type = tarfile.LNKTYPE if hard_link else tarfile.SYMTYPE
+        info.linkname = link_target
+        tar.addfile(info)
+    return tar_buffer.getvalue()
+
 
 # Test fixtures
 @pytest.fixture
@@ -636,3 +676,194 @@ Methods.
     assert tree[0].name == "Introduction"
     assert tree[0].children[0].name == "Background"
     assert tree[1].name == "Methods"
+
+
+def test_use_cache_skips_network_when_cache_is_valid(temp_cache_dir, monkeypatch):
+    """When cache is already valid, use_cache=True should avoid network calls."""
+    arxiv_id = "9999.00001"
+    cache_dir = temp_cache_dir / arxiv_id
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "main.tex").write_text("\\documentclass{article}")
+    (cache_dir / _CACHE_COMPLETE_MARKER).write_text("ok\n")
+
+    def _should_not_be_called(*args, **kwargs):
+        raise AssertionError("Network path should not be called for valid cache")
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", _should_not_be_called)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", _should_not_be_called)
+
+    assert download_arxiv_source(arxiv_id, str(temp_cache_dir), use_cache=True)
+
+
+def test_use_cache_repairs_incomplete_cache(temp_cache_dir, monkeypatch):
+    """Incomplete cache directories should be rebuilt when use_cache=True."""
+    arxiv_id = "9999.00002"
+    cache_dir = temp_cache_dir / arxiv_id
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "partial.txt").write_text("incomplete")
+
+    tar_bytes = _make_tar_bytes({"paper/main.tex": "\\documentclass{article}"})
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    assert download_arxiv_source(arxiv_id, str(temp_cache_dir), use_cache=True)
+    assert _is_valid_cache_dir(cache_dir)
+
+
+def test_download_parallel_same_id_no_race_crash(temp_cache_dir, monkeypatch):
+    """Concurrent downloads of the same ID should not fail due to races."""
+    arxiv_id = "9999.00003"
+    tar_bytes = _make_tar_bytes({"main.tex": "\\documentclass{article}"})
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    def _run_once(_):
+        return download_arxiv_source(
+            arxiv_id,
+            str(temp_cache_dir),
+            use_cache=False,
+            lock_timeout_seconds=10.0,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(_run_once, range(16)))
+
+    assert all(results)
+    assert _is_valid_cache_dir(temp_cache_dir / arxiv_id)
+
+
+def test_download_lock_timeout_returns_false(temp_cache_dir, monkeypatch):
+    """Caller should get False when lock wait times out."""
+    arxiv_id = "9999.00004"
+    lock_path = _get_lock_path(temp_cache_dir, arxiv_id)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr(
+        "arxiv_to_prompt.core.requests.get",
+        lambda *a, **k: _FakeResponse(_make_tar_bytes({"main.tex": "\\documentclass{article}"})),
+    )
+
+    with FileLock(str(lock_path), timeout=1):
+        assert not download_arxiv_source(
+            arxiv_id,
+            str(temp_cache_dir),
+            use_cache=False,
+            lock_timeout_seconds=0.01,
+        )
+
+
+def test_download_rejects_unsafe_tar_paths(temp_cache_dir, monkeypatch):
+    """Path traversal entries in tar archives should be rejected."""
+    arxiv_id = "9999.00005"
+    tar_bytes = _make_tar_bytes({"../escape.tex": "bad"})
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    assert not download_arxiv_source(arxiv_id, str(temp_cache_dir), use_cache=False)
+    assert not (temp_cache_dir / arxiv_id).exists()
+
+
+def test_download_rejects_symlink_tar_entries(temp_cache_dir, monkeypatch):
+    """Symlink entries in tar archives should be rejected."""
+    arxiv_id = "9999.00006"
+    tar_bytes = _make_tar_with_link("sym.tex", "../escape.tex", hard_link=False)
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    assert not download_arxiv_source(arxiv_id, str(temp_cache_dir), use_cache=False)
+    assert not (temp_cache_dir / arxiv_id).exists()
+
+
+def test_download_rejects_hardlink_tar_entries(temp_cache_dir, monkeypatch):
+    """Hardlink entries in tar archives should be rejected."""
+    arxiv_id = "9999.00007"
+    tar_bytes = _make_tar_with_link("hard.tex", "target.tex", hard_link=True)
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    assert not download_arxiv_source(arxiv_id, str(temp_cache_dir), use_cache=False)
+    assert not (temp_cache_dir / arxiv_id).exists()
+
+
+def test_old_marker_is_not_accepted_without_legacy_support(temp_cache_dir, monkeypatch):
+    """Old cache marker '.complete' should be treated as invalid."""
+    arxiv_id = "9999.00008"
+    cache_dir = temp_cache_dir / arxiv_id
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "main.tex").write_text("\\documentclass{article}")
+    (cache_dir / ".complete").write_text("ok\n")
+
+    assert not _is_valid_cache_dir(cache_dir)
+
+    tar_bytes = _make_tar_bytes({"fresh.tex": "\\documentclass{article}"})
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    assert download_arxiv_source(arxiv_id, str(temp_cache_dir), use_cache=True)
+    assert (cache_dir / _CACHE_COMPLETE_MARKER).exists()
+    assert not (cache_dir / ".complete").exists()
+
+
+def test_download_rolls_back_if_publish_swap_fails(temp_cache_dir, monkeypatch):
+    """If publish swap fails, old cache should be restored."""
+    arxiv_id = "9999.00009"
+    cache_dir = temp_cache_dir / arxiv_id
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "old.tex").write_text("\\documentclass{article}\nold")
+    (cache_dir / _CACHE_COMPLETE_MARKER).write_text("ok\n")
+
+    tar_bytes = _make_tar_bytes({"new.tex": "\\documentclass{article}\nnew"})
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    original_replace = os.replace
+    replace_calls = {"count": 0}
+
+    def _flaky_replace(src, dst):
+        replace_calls["count"] += 1
+        if replace_calls["count"] == 2:
+            raise OSError("simulated publish failure")
+        return original_replace(src, dst)
+
+    monkeypatch.setattr("arxiv_to_prompt.core.os.replace", _flaky_replace)
+
+    assert not download_arxiv_source(arxiv_id, str(temp_cache_dir), use_cache=False)
+    assert (cache_dir / "old.tex").exists()
+    assert not (cache_dir / "new.tex").exists()
+    assert _is_valid_cache_dir(cache_dir)
+    assert not list(temp_cache_dir.glob(f"{arxiv_id}.old.*"))
+
+
+def test_publish_succeeds_even_if_old_backup_cleanup_fails(temp_cache_dir, monkeypatch, caplog):
+    """Backup cleanup failure should warn but still succeed."""
+    arxiv_id = "9999.00010"
+    cache_dir = temp_cache_dir / arxiv_id
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "old.tex").write_text("\\documentclass{article}\nold")
+    (cache_dir / _CACHE_COMPLETE_MARKER).write_text("ok\n")
+
+    tar_bytes = _make_tar_bytes({"new.tex": "\\documentclass{article}\nnew"})
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    original_rmtree = shutil.rmtree
+
+    def _flaky_rmtree(path, *args, **kwargs):
+        path_obj = Path(path)
+        if path_obj.name.startswith(f"{arxiv_id}.old."):
+            raise PermissionError("simulated busy backup directory")
+        return original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr("arxiv_to_prompt.core.shutil.rmtree", _flaky_rmtree)
+
+    with caplog.at_level("WARNING"):
+        assert download_arxiv_source(arxiv_id, str(temp_cache_dir), use_cache=False)
+
+    assert (cache_dir / "new.tex").exists()
+    assert list(temp_cache_dir.glob(f"{arxiv_id}.old.*"))
+    assert "Failed to remove directory" in caplog.text

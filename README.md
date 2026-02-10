@@ -32,6 +32,9 @@ arxiv-to-prompt 2303.08774 --no-appendix
 # Combine options (no comments and no appendix)
 arxiv-to-prompt 2303.08774 --no-comments --no-appendix
 
+# Wait up to 5 minutes for a lock if another process is already downloading this paper
+arxiv-to-prompt 2303.08774 --lock-timeout 300
+
 # Process a local folder containing TeX files (instead of downloading from arXiv)
 arxiv-to-prompt --local-folder /path/to/tex/files
 
