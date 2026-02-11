@@ -1,5 +1,6 @@
 import argparse
 import re
+import sys
 from .core import (
     process_latex_source,
     get_default_cache_dir,
@@ -65,6 +66,12 @@ def main():
         help="Extract only the specified section(s). Can be used multiple times."
     )
     parser.add_argument(
+        "-c", "--copy",
+        action="store_true",
+        default=False,
+        help="Copy the output to the clipboard instead of printing it.",
+    )
+    parser.add_argument(
         "--force-download",
         action="store_true",
         default=False,
@@ -102,9 +109,8 @@ def main():
 
     if args.list_sections:
         tree = parse_section_tree(content)
-        print(format_section_tree(tree))
+        output = format_section_tree(tree)
     elif args.section:
-        import sys
         tree = parse_section_tree(content)
         extracted = []
         for section_path in args.section:
@@ -123,10 +129,22 @@ def main():
                 extracted.append(section_content)
             else:
                 print(f"Warning: Section '{section_path}' not found", file=sys.stderr)
-        if extracted:
-            print("\n\n".join(extracted))
+        output = "\n\n".join(extracted) if extracted else None
     else:
-        print(content)
+        output = content
+
+    if output is None:
+        return
+
+    if args.copy:
+        try:
+            import pyperclip
+            pyperclip.copy(output)
+            print("Copied to clipboard.", file=sys.stderr)
+        except Exception as e:
+            print(f"Error: Could not copy to clipboard: {e}", file=sys.stderr)
+    else:
+        print(output)
 
 if __name__ == "__main__":
     main()
