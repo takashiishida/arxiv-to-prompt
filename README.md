@@ -18,7 +18,6 @@ pip install arxiv-to-prompt
 
 ### Usage
 
-Basic usage:
 ```bash
 # Display LaTeX source with comments
 arxiv-to-prompt 2303.08774
@@ -32,11 +31,26 @@ arxiv-to-prompt 2303.08774 --no-appendix
 # Combine options (no comments and no appendix)
 arxiv-to-prompt 2303.08774 --no-comments --no-appendix
 
-# Wait up to 5 minutes for a lock if another process is already downloading this paper
-arxiv-to-prompt 2303.08774 --lock-timeout 300
+# Copy to clipboard
+arxiv-to-prompt 2303.08774 | pbcopy
+
+# Combine with the `llm` library from https://github.com/simonw/llm to chat about the paper
+arxiv-to-prompt 1706.03762 | llm -s "explain this paper"
+```
+
+You can use either the arXiv ID (e.g., `2303.08774`) or the full URL (e.g., `https://arxiv.org/abs/2303.08774`). It will automatically download the most recent version of the paper, so you don't need to specify the version. Downloaded papers are cached locally, so subsequent runs for the same paper will use the cached version without re-downloading.
+
+### Advanced Options
+
+```bash
+# Force re-download even if the paper is already cached
+arxiv-to-prompt 2303.08774 --force-download
 
 # Process a local folder containing TeX files (instead of downloading from arXiv)
 arxiv-to-prompt --local-folder /path/to/tex/files
+
+# Wait up to 5 minutes for a lock if another process is already downloading this paper
+arxiv-to-prompt 2303.08774 --lock-timeout 300
 
 # List all sections (with subsections indented)
 arxiv-to-prompt 2307.09288 --list-sections
@@ -59,15 +73,7 @@ arxiv-to-prompt 2307.09288 --section "Human Evaluation"
 
 # Use path notation when the same name appears multiple times
 arxiv-to-prompt 2307.09288 --section "Fine-tuning > RLHF Results > Human Evaluation"
-
-# Copy to clipboard
-arxiv-to-prompt 2303.08774 | pbcopy
-
-# Combine with the `llm` library from https://github.com/simonw/llm to chat about the paper
-arxiv-to-prompt 1706.03762 | llm -s "explain this paper"
 ```
-
-You can use either the arXiv ID (e.g., `2303.08774`) or the full URL (e.g., `https://arxiv.org/abs/2303.08774`). It will automatically download the latest version of the paper, so you don't need to specify the version.
 
 ### Python API
 
@@ -87,6 +93,9 @@ latex_source = process_latex_source("2303.08774", remove_appendix_section=True)
 
 # Combine options (no comments and no appendix)
 latex_source = process_latex_source("2303.08774", keep_comments=False, remove_appendix_section=True)
+
+# Force re-download even if the paper is already cached
+latex_source = process_latex_source("2303.08774", use_cache=False)
 
 # Process LaTeX sources from a local folder (instead of downloading from arXiv)
 latex_source = process_latex_source(local_folder="/path/to/tex/files")
