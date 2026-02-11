@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 (2026-02-12)
+- Use cached papers by default instead of re-downloading. Add `--force-download` to override. [#17](https://github.com/takashiishida/arxiv-to-prompt/issues/17)
+- Add `-c`/`--copy` flag to copy output to clipboard using `pyperclip`. [#15](https://github.com/takashiishida/arxiv-to-prompt/issues/15)
+
 ## 0.7.0 (2026-02-11)
 - Make arXiv source cache parallel-safe with file locking (`filelock`). [#16](https://github.com/takashiishida/arxiv-to-prompt/pull/16)
   - Concurrent downloads of the same paper no longer race or corrupt the cache
