@@ -700,6 +700,46 @@ def test_cli_force_download_flag(temp_cache_dir, monkeypatch, capsys):
     assert captured_kwargs["use_cache"] is False
 
 
+def test_cli_copy_flag(temp_cache_dir, monkeypatch, capsys):
+    """Test that --copy copies output to clipboard instead of printing."""
+    mock_content = "\\documentclass{article}\n\\begin{document}Hello\\end{document}"
+
+    def mock_process(**kwargs):
+        return mock_content
+
+    monkeypatch.setattr("arxiv_to_prompt.cli.process_latex_source", mock_process)
+
+    copied_text = {}
+
+    def mock_pyperclip_copy(text):
+        copied_text["value"] = text
+
+    import pyperclip
+    monkeypatch.setattr(pyperclip, "copy", mock_pyperclip_copy)
+
+    # With --copy: should copy to clipboard, not print to stdout
+    monkeypatch.setattr("sys.argv", ["arxiv-to-prompt", "2303.08774", "--cache-dir", str(temp_cache_dir), "--copy"])
+    main()
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Copied to clipboard." in captured.err
+    assert copied_text["value"] == mock_content
+
+    # With -c shorthand: same behavior
+    copied_text.clear()
+    monkeypatch.setattr("sys.argv", ["arxiv-to-prompt", "2303.08774", "--cache-dir", str(temp_cache_dir), "-c"])
+    main()
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert copied_text["value"] == mock_content
+
+    # Without --copy: should print to stdout
+    monkeypatch.setattr("sys.argv", ["arxiv-to-prompt", "2303.08774", "--cache-dir", str(temp_cache_dir)])
+    main()
+    captured = capsys.readouterr()
+    assert mock_content in captured.out
+
+
 def test_use_cache_skips_network_when_cache_is_valid(temp_cache_dir, monkeypatch):
     """When cache is already valid, use_cache=True should avoid network calls."""
     arxiv_id = "9999.00001"
