@@ -26,7 +26,7 @@ from arxiv_to_prompt.core import (
     _get_lock_path,
     _is_valid_cache_dir,
 )
-from arxiv_to_prompt.cli import extract_arxiv_id
+from arxiv_to_prompt.cli import extract_arxiv_id, main
 
 
 class _FakeResponse:
@@ -676,6 +676,28 @@ Methods.
     assert tree[0].name == "Introduction"
     assert tree[0].children[0].name == "Background"
     assert tree[1].name == "Methods"
+
+
+def test_cli_force_download_flag(temp_cache_dir, monkeypatch, capsys):
+    """Test that --force-download passes use_cache=False to process_latex_source."""
+    captured_kwargs = {}
+
+    def mock_process(**kwargs):
+        captured_kwargs.update(kwargs)
+        return "\\documentclass{article}\n\\begin{document}Hello\\end{document}"
+
+    monkeypatch.setattr("arxiv_to_prompt.cli.process_latex_source", mock_process)
+
+    # Default behavior: use_cache should be True
+    monkeypatch.setattr("sys.argv", ["arxiv-to-prompt", "2303.08774", "--cache-dir", str(temp_cache_dir)])
+    main()
+    assert captured_kwargs["use_cache"] is True
+
+    # With --force-download: use_cache should be False
+    captured_kwargs.clear()
+    monkeypatch.setattr("sys.argv", ["arxiv-to-prompt", "2303.08774", "--cache-dir", str(temp_cache_dir), "--force-download"])
+    main()
+    assert captured_kwargs["use_cache"] is False
 
 
 def test_use_cache_skips_network_when_cache_is_valid(temp_cache_dir, monkeypatch):

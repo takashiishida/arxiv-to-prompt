@@ -65,6 +65,12 @@ def main():
         help="Extract only the specified section(s). Can be used multiple times."
     )
     parser.add_argument(
+        "--force-download",
+        action="store_true",
+        default=False,
+        help="Re-download the paper from arXiv even if a cached version exists.",
+    )
+    parser.add_argument(
         "--lock-timeout",
         type=float,
         default=120.0,
@@ -86,6 +92,7 @@ def main():
         arxiv_id=arxiv_id,
         keep_comments=not args.no_comments,
         cache_dir=args.cache_dir,
+        use_cache=not args.force_download,
         remove_appendix_section=args.no_appendix,
         local_folder=args.local_folder,
         lock_timeout_seconds=args.lock_timeout,
