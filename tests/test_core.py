@@ -356,6 +356,26 @@ def test_input_file_extensions(temp_cache_dir):
     assert "Already tex content" in result
 
 
+def test_input_file_with_dots_in_path(temp_cache_dir):
+    """Test that \\input paths with dots (e.g. 3.5_dataset) resolve correctly."""
+    tex_dir = temp_cache_dir / "test_dots"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "sections").mkdir()
+
+    main_file = tex_dir / "main.tex"
+    main_file.write_text(
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\input{sections/3.5_dataset}\n"
+        "\\end{document}\n"
+    )
+
+    (tex_dir / "sections" / "3.5_dataset.tex").write_text("Dataset section content")
+
+    result = flatten_tex(str(tex_dir), "main.tex")
+    assert "Dataset section content" in result
+
+
 def test_extract_arxiv_id():
     """Test extracting arxiv ID from URLs and plain IDs."""
     # Plain IDs should be returned as-is
