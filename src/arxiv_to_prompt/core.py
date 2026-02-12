@@ -491,10 +491,17 @@ def flatten_tex(directory: str, main_file: str) -> str:
                 
                 # Process the command normally
                 input_file = match.group(1)
-                # Only add .tex extension if the file has no extension at all
-                if not os.path.splitext(input_file)[1]:
-                    input_file += '.tex'
-                input_path = os.path.join(directory, input_file)
+                # LaTeX's \input tries filename.tex first, then bare filename.
+                # e.g. \input{ch1} -> ch1.tex, \input{ref.bbl} -> ref.bbl.tex (not found) -> ref.bbl
+                # See https://latexref.xyz/_005cinput.html
+                if not input_file.endswith('.tex'):
+                    tex_path = os.path.join(directory, input_file + '.tex')
+                    if os.path.isfile(tex_path):
+                        input_path = tex_path
+                    else:
+                        input_path = os.path.join(directory, input_file)
+                else:
+                    input_path = os.path.join(directory, input_file)
                 return process_file(input_path, processed_files)
             
             content = re.sub(r'\\(?:input|include){([^}]+)}', replace_input, content)
