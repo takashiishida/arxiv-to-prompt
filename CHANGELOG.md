@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.0 (2026-02-12)
+- Fix `\input` failing on paths containing dots (e.g. `\input{sections/3.5_dataset}`). [#20](https://github.com/takashiishida/arxiv-to-prompt/issues/20)
+
 ## 0.8.0 (2026-02-12)
 - Use cached papers by default instead of re-downloading. Add `--force-download` to override. [#17](https://github.com/takashiishida/arxiv-to-prompt/issues/17)
 - Add `-c`/`--copy` flag to copy output to clipboard using `pyperclip`. [#15](https://github.com/takashiishida/arxiv-to-prompt/issues/15)
