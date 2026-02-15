@@ -90,14 +90,37 @@ def main():
         help="Output resolved figure file paths instead of LaTeX text",
     )
 
+    parser.add_argument(
+        "--abstract",
+        action="store_true",
+        default=False,
+        help="Output only the abstract text",
+    )
+
     args = parser.parse_args()
-    
+
     # Validate that either arxiv_id or local_folder is provided
     if not args.arxiv_id and not args.local_folder:
         parser.error("Either provide an arXiv ID or use --local-folder to specify a local folder")
-    
+
     if args.arxiv_id and args.local_folder:
         parser.error("Cannot specify both arXiv ID and --local-folder")
+
+    # Validate incompatible flag combinations
+    if args.abstract and args.figure_paths:
+        parser.error("Cannot use both --abstract and --figure-paths")
+    if args.abstract and args.no_comments:
+        parser.error("--abstract already excludes comments to avoid extracting commented-out abstracts")
+    if args.abstract and args.no_appendix:
+        parser.error("Cannot use both --abstract and --no-appendix")
+    if args.abstract and args.section:
+        parser.error("Cannot use both --abstract and --section")
+    if args.abstract and args.list_sections:
+        parser.error("Cannot use both --abstract and --list-sections")
+    if args.figure_paths and args.section:
+        parser.error("Cannot use both --figure-paths and --section")
+    if args.figure_paths and args.list_sections:
+        parser.error("Cannot use both --figure-paths and --list-sections")
 
     arxiv_id = extract_arxiv_id(args.arxiv_id) if args.arxiv_id else None
 
@@ -110,6 +133,7 @@ def main():
         local_folder=args.local_folder,
         lock_timeout_seconds=args.lock_timeout,
         figure_paths_only=args.figure_paths,
+        abstract_only=args.abstract,
     )
     if not content:
         return

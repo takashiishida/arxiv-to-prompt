@@ -18,6 +18,7 @@ from arxiv_to_prompt.core import (
     list_sections,
     extract_section,
     extract_figure_paths,
+    extract_abstract,
     SectionNode,
     parse_section_tree,
     format_section_tree,
@@ -1219,3 +1220,218 @@ def test_cli_figure_paths_flag(temp_cache_dir, monkeypatch, capsys):
     ])
     main()
     assert captured_kwargs["figure_paths_only"] is False
+
+
+# ── Abstract extraction tests ─────────────────────────────────────────
+
+
+def test_extract_abstract_basic():
+    """Test basic abstract extraction."""
+    text = r"""
+\begin{document}
+\begin{abstract}
+This is the abstract of the paper.
+\end{abstract}
+\section{Introduction}
+"""
+    result = extract_abstract(text)
+    assert result == "This is the abstract of the paper."
+
+
+def test_extract_abstract_multiline():
+    """Test multi-line abstract extraction."""
+    text = r"""
+\begin{abstract}
+This is the first line.
+This is the second line.
+
+This is after a blank line.
+\end{abstract}
+"""
+    result = extract_abstract(text)
+    assert "first line" in result
+    assert "second line" in result
+    assert "after a blank line" in result
+
+
+def test_extract_abstract_not_found():
+    """Test that None is returned when no abstract exists."""
+    text = r"""
+\begin{document}
+\section{Introduction}
+Some text.
+\end{document}
+"""
+    result = extract_abstract(text)
+    assert result is None
+
+
+def test_extract_abstract_with_comments_removed():
+    """Test abstract extraction after comment removal."""
+    text = r"""
+\begin{abstract}
+Visible text.
+% This is a comment inside abstract.
+More visible text.
+\end{abstract}
+"""
+    filtered = remove_comments_from_lines(text)
+    result = extract_abstract(filtered)
+    assert "Visible text." in result
+    assert "More visible text." in result
+    assert "comment" not in result
+
+
+def test_process_latex_source_abstract_skips_commented_abstract(temp_cache_dir):
+    """Test that abstract_only automatically strips comments before extracting."""
+    tex_dir = temp_cache_dir / "test_abstract_commented"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "main.tex").write_text(
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "% \\begin{abstract}\n"
+        "% Old draft abstract.\n"
+        "% \\end{abstract}\n"
+        "\\begin{abstract}\n"
+        "Real abstract.\n"
+        "\\end{abstract}\n"
+        "\\end{document}\n"
+    )
+
+    result = process_latex_source(
+        local_folder=str(tex_dir),
+        abstract_only=True,
+    )
+    assert result == "Real abstract."
+    assert "Old draft" not in result
+
+
+def test_process_latex_source_abstract_only(temp_cache_dir):
+    """Test process_latex_source with abstract_only=True."""
+    tex_dir = temp_cache_dir / "test_abstract"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "main.tex").write_text(
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\begin{abstract}\n"
+        "This is the abstract.\n"
+        "\\end{abstract}\n"
+        "\\section{Introduction}\n"
+        "Intro text.\n"
+        "\\end{document}\n"
+    )
+
+    result = process_latex_source(
+        local_folder=str(tex_dir),
+        abstract_only=True,
+    )
+    assert result == "This is the abstract."
+    assert "Introduction" not in result
+
+
+def test_process_latex_source_abstract_only_no_abstract(temp_cache_dir):
+    """Test that abstract_only returns None when no abstract exists."""
+    tex_dir = temp_cache_dir / "test_no_abstract"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "main.tex").write_text(
+        "\\documentclass{article}\n"
+        "\\begin{document}\nHello\n\\end{document}\n"
+    )
+
+    result = process_latex_source(
+        local_folder=str(tex_dir),
+        abstract_only=True,
+    )
+    assert result is None
+
+
+def test_cli_abstract_flag(temp_cache_dir, monkeypatch, capsys):
+    """Test that --abstract passes abstract_only=True to process_latex_source."""
+    captured_kwargs = {}
+
+    def mock_process(**kwargs):
+        captured_kwargs.update(kwargs)
+        return "This is the abstract."
+
+    monkeypatch.setattr("arxiv_to_prompt.cli.process_latex_source", mock_process)
+
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--cache-dir", str(temp_cache_dir),
+        "--abstract",
+    ])
+    main()
+    assert captured_kwargs["abstract_only"] is True
+
+    captured = capsys.readouterr()
+    assert "This is the abstract." in captured.out
+
+
+def test_cli_abstract_and_figure_paths_error(temp_cache_dir, monkeypatch):
+    """Test that --abstract and --figure-paths together produce an error."""
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--abstract", "--figure-paths",
+    ])
+    with pytest.raises(SystemExit):
+        main()
+
+
+def test_cli_abstract_and_no_comments_error(temp_cache_dir, monkeypatch):
+    """Test that --abstract and --no-comments together produce an error."""
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--abstract", "--no-comments",
+    ])
+    with pytest.raises(SystemExit):
+        main()
+
+
+def test_cli_abstract_and_no_appendix_error(temp_cache_dir, monkeypatch):
+    """Test that --abstract and --no-appendix together produce an error."""
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--abstract", "--no-appendix",
+    ])
+    with pytest.raises(SystemExit):
+        main()
+
+
+def test_cli_abstract_and_section_error(temp_cache_dir, monkeypatch):
+    """Test that --abstract and --section together produce an error."""
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--abstract", "--section", "Introduction",
+    ])
+    with pytest.raises(SystemExit):
+        main()
+
+
+def test_cli_abstract_and_list_sections_error(temp_cache_dir, monkeypatch):
+    """Test that --abstract and --list-sections together produce an error."""
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--abstract", "--list-sections",
+    ])
+    with pytest.raises(SystemExit):
+        main()
+
+
+def test_cli_figure_paths_and_section_error(temp_cache_dir, monkeypatch):
+    """Test that --figure-paths and --section together produce an error."""
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--figure-paths", "--section", "Introduction",
+    ])
+    with pytest.raises(SystemExit):
+        main()
+
+
+def test_cli_figure_paths_and_list_sections_error(temp_cache_dir, monkeypatch):
+    """Test that --figure-paths and --list-sections together produce an error."""
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--figure-paths", "--list-sections",
+    ])
+    with pytest.raises(SystemExit):
+        main()
