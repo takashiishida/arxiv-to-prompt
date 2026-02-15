@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.0 (2026-02-15)
+- Add `--figure-paths` flag to output resolved image file paths instead of LaTeX text. Respects `--no-comments` and `--no-appendix` filters. [#22](https://github.com/takashiishida/arxiv-to-prompt/pull/22)
+- Add `--abstract` flag to output only the abstract text. Comments are automatically stripped to avoid extracting commented-out abstracts. [#23](https://github.com/takashiishida/arxiv-to-prompt/pull/23)
+- Add validation to prevent incompatible flag combinations (e.g. `--abstract` + `--figure-paths`, `--figure-paths` + `--section`)
+
 ## 0.9.0 (2026-02-12)
 - Fix `\input` failing on paths containing dots (e.g. `\input{sections/3.5_dataset}`). [#20](https://github.com/takashiishida/arxiv-to-prompt/issues/20)
 
