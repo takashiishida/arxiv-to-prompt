@@ -17,6 +17,7 @@ from arxiv_to_prompt.core import (
     remove_appendix,
     list_sections,
     extract_section,
+    extract_figure_paths,
     SectionNode,
     parse_section_tree,
     format_section_tree,
@@ -949,3 +950,272 @@ def test_publish_succeeds_even_if_old_backup_cleanup_fails(temp_cache_dir, monke
     assert (cache_dir / "new.tex").exists()
     assert list(temp_cache_dir.glob(f"{arxiv_id}.old.*"))
     assert "Failed to remove directory" in caplog.text
+
+
+# ── Figure path extraction tests ──────────────────────────────────────
+
+
+def test_extract_figure_paths_basic(temp_cache_dir):
+    """Test basic extraction with explicit file extensions."""
+    tex_dir = temp_cache_dir / "test_figures"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "fig1.png").write_bytes(b"fake png")
+    (tex_dir / "fig2.pdf").write_bytes(b"fake pdf")
+
+    text = r"""
+\begin{figure}
+\includegraphics{fig1.png}
+\end{figure}
+\begin{figure}
+\includegraphics{fig2.pdf}
+\end{figure}
+"""
+    paths = extract_figure_paths(text, str(tex_dir))
+    assert len(paths) == 2
+    assert paths[0].endswith("fig1.png")
+    assert paths[1].endswith("fig2.pdf")
+    # All paths should be absolute
+    for p in paths:
+        assert os.path.isabs(p)
+
+
+def test_extract_figure_paths_extension_resolution(temp_cache_dir):
+    """Test that omitted extensions are resolved in priority order."""
+    tex_dir = temp_cache_dir / "test_ext"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "plot.png").write_bytes(b"fake png")
+
+    text = r"\includegraphics{plot}"
+    paths = extract_figure_paths(text, str(tex_dir))
+    assert len(paths) == 1
+    assert paths[0].endswith("plot.png")
+
+
+def test_extract_figure_paths_extension_priority(temp_cache_dir):
+    """Test that .pdf is preferred over .png when both exist (pdf comes first)."""
+    tex_dir = temp_cache_dir / "test_priority"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "chart.pdf").write_bytes(b"fake pdf")
+    (tex_dir / "chart.png").write_bytes(b"fake png")
+
+    text = r"\includegraphics{chart}"
+    paths = extract_figure_paths(text, str(tex_dir))
+    assert len(paths) == 1
+    assert paths[0].endswith("chart.pdf")
+
+
+def test_extract_figure_paths_with_graphicspath(temp_cache_dir):
+    """Test that \\graphicspath directories are searched."""
+    tex_dir = temp_cache_dir / "test_gpath"
+    tex_dir.mkdir(parents=True)
+    images_dir = tex_dir / "images"
+    images_dir.mkdir()
+    (images_dir / "diagram.pdf").write_bytes(b"fake pdf")
+
+    text = r"""
+\graphicspath{{images/}}
+\includegraphics{diagram}
+"""
+    paths = extract_figure_paths(text, str(tex_dir))
+    assert len(paths) == 1
+    assert "images" in paths[0]
+    assert paths[0].endswith("diagram.pdf")
+
+
+def test_extract_figure_paths_with_options(temp_cache_dir):
+    """Test that \\includegraphics with optional arguments is handled."""
+    tex_dir = temp_cache_dir / "test_opts"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "fig.png").write_bytes(b"fake")
+
+    text = r"""
+\includegraphics[width=0.5\textwidth]{fig.png}
+\includegraphics[scale=2,angle=90]{fig.png}
+\includegraphics {fig.png}
+"""
+    paths = extract_figure_paths(text, str(tex_dir))
+    # All three reference the same file, so deduplication should yield 1
+    assert len(paths) == 1
+    assert paths[0].endswith("fig.png")
+
+
+def test_extract_figure_paths_deduplication(temp_cache_dir):
+    """Test that duplicate references yield a single path."""
+    tex_dir = temp_cache_dir / "test_dedup"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "same.png").write_bytes(b"fake")
+
+    text = r"""
+\includegraphics{same.png}
+\includegraphics{same.png}
+\includegraphics{same.png}
+"""
+    paths = extract_figure_paths(text, str(tex_dir))
+    assert len(paths) == 1
+
+
+def test_extract_figure_paths_nonexistent_files(temp_cache_dir):
+    """Test that non-existent files are silently skipped."""
+    tex_dir = temp_cache_dir / "test_missing"
+    tex_dir.mkdir(parents=True)
+
+    text = r"\includegraphics{does_not_exist.png}"
+    paths = extract_figure_paths(text, str(tex_dir))
+    assert paths == []
+
+
+def test_extract_figure_paths_skips_urls(temp_cache_dir):
+    """Test that URL references are skipped."""
+    tex_dir = temp_cache_dir / "test_urls"
+    tex_dir.mkdir(parents=True)
+
+    text = r"\includegraphics{https://example.com/fig.png}"
+    paths = extract_figure_paths(text, str(tex_dir))
+    assert paths == []
+
+
+def test_extract_figure_paths_subdirectory(temp_cache_dir):
+    """Test resolution of images in subdirectories."""
+    tex_dir = temp_cache_dir / "test_subdir"
+    tex_dir.mkdir(parents=True)
+    figs_dir = tex_dir / "figures"
+    figs_dir.mkdir()
+    (figs_dir / "deep.jpg").write_bytes(b"fake")
+
+    text = r"\includegraphics{figures/deep.jpg}"
+    paths = extract_figure_paths(text, str(tex_dir))
+    assert len(paths) == 1
+    assert paths[0].endswith("deep.jpg")
+
+
+def test_extract_figure_paths_comment_filtering(temp_cache_dir):
+    """Test that figures in comments are excluded after comment removal."""
+    tex_dir = temp_cache_dir / "test_comment_filter"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "visible.png").write_bytes(b"fake")
+    (tex_dir / "hidden.png").write_bytes(b"fake")
+
+    text = r"""
+\includegraphics{visible.png}
+% \includegraphics{hidden.png}
+"""
+    # First remove comments, then extract (as process_latex_source does)
+    filtered = remove_comments_from_lines(text)
+    paths = extract_figure_paths(filtered, str(tex_dir))
+    assert len(paths) == 1
+    assert paths[0].endswith("visible.png")
+
+
+def test_extract_figure_paths_appendix_filtering(temp_cache_dir):
+    """Test that figures in appendix are excluded after appendix removal."""
+    tex_dir = temp_cache_dir / "test_appendix_filter"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "main_fig.png").write_bytes(b"fake")
+    (tex_dir / "appendix_fig.png").write_bytes(b"fake")
+
+    text = r"""
+\includegraphics{main_fig.png}
+\appendix
+\includegraphics{appendix_fig.png}
+"""
+    filtered = remove_appendix(text)
+    paths = extract_figure_paths(filtered, str(tex_dir))
+    assert len(paths) == 1
+    assert paths[0].endswith("main_fig.png")
+
+
+def test_process_latex_source_figure_paths_only(temp_cache_dir):
+    """Test process_latex_source with figure_paths_only=True."""
+    tex_dir = temp_cache_dir / "test_process_figs"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "main.tex").write_text(
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\includegraphics{plot.png}\n"
+        "\\end{document}\n"
+    )
+    (tex_dir / "plot.png").write_bytes(b"fake png")
+
+    result = process_latex_source(
+        local_folder=str(tex_dir),
+        figure_paths_only=True,
+    )
+    assert result is not None
+    lines = result.strip().split("\n")
+    assert len(lines) == 1
+    assert lines[0].endswith("plot.png")
+    # Should NOT contain LaTeX
+    assert "\\documentclass" not in result
+
+
+def test_process_latex_source_figure_paths_respects_filters(temp_cache_dir):
+    """Test that figure_paths_only respects --no-comments and --no-appendix."""
+    tex_dir = temp_cache_dir / "test_process_filter"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "main.tex").write_text(
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\includegraphics{body.png}\n"
+        "% \\includegraphics{commented.png}\n"
+        "\\appendix\n"
+        "\\includegraphics{appendix.png}\n"
+        "\\end{document}\n"
+    )
+    (tex_dir / "body.png").write_bytes(b"fake")
+    (tex_dir / "commented.png").write_bytes(b"fake")
+    (tex_dir / "appendix.png").write_bytes(b"fake")
+
+    result = process_latex_source(
+        local_folder=str(tex_dir),
+        figure_paths_only=True,
+        keep_comments=False,
+        remove_appendix_section=True,
+    )
+    assert result is not None
+    lines = result.strip().split("\n")
+    assert len(lines) == 1
+    assert lines[0].endswith("body.png")
+
+
+def test_process_latex_source_figure_paths_no_images(temp_cache_dir):
+    """Test that figure_paths_only returns None when no images are found."""
+    tex_dir = temp_cache_dir / "test_no_figs"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "main.tex").write_text(
+        "\\documentclass{article}\n"
+        "\\begin{document}\nHello\n\\end{document}\n"
+    )
+
+    result = process_latex_source(
+        local_folder=str(tex_dir),
+        figure_paths_only=True,
+    )
+    assert result is None
+
+
+def test_cli_figure_paths_flag(temp_cache_dir, monkeypatch, capsys):
+    """Test that --figure-paths passes figure_paths_only=True to process_latex_source."""
+    captured_kwargs = {}
+
+    def mock_process(**kwargs):
+        captured_kwargs.update(kwargs)
+        return "/tmp/fig1.png\n/tmp/fig2.pdf"
+
+    monkeypatch.setattr("arxiv_to_prompt.cli.process_latex_source", mock_process)
+
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--cache-dir", str(temp_cache_dir),
+        "--figure-paths",
+    ])
+    main()
+    assert captured_kwargs["figure_paths_only"] is True
+
+    # Without flag: should be False
+    captured_kwargs.clear()
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--cache-dir", str(temp_cache_dir),
+    ])
+    main()
+    assert captured_kwargs["figure_paths_only"] is False

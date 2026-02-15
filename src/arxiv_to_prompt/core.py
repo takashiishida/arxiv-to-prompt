@@ -283,6 +283,74 @@ def remove_appendix(text: str) -> str:
     return text
 
 
+_IMAGE_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.eps', '.svg']
+
+
+def _resolve_image_path(reference: str, search_dirs: List[str]) -> Optional[str]:
+    """Resolve an image reference to an absolute file path."""
+    for search_dir in search_dirs:
+        candidate = os.path.join(search_dir, reference)
+        # Try exact path first
+        if os.path.isfile(candidate):
+            return str(Path(candidate).resolve())
+        # If no extension, try common image extensions
+        _, ext = os.path.splitext(reference)
+        if not ext:
+            for image_ext in _IMAGE_EXTENSIONS:
+                candidate_with_ext = candidate + image_ext
+                if os.path.isfile(candidate_with_ext):
+                    return str(Path(candidate_with_ext).resolve())
+    return None
+
+
+def extract_figure_paths(text: str, source_dir: str) -> List[str]:
+    """
+    Extract and resolve \\includegraphics file paths from processed LaTeX content.
+
+    Scans the text for \\includegraphics commands and resolves each reference
+    to an absolute file path in the source directory. Respects \\graphicspath
+    declarations. When a file reference omits its extension, common image
+    extensions are tried in order.
+
+    Args:
+        text: Processed LaTeX content (after comment/appendix removal as desired)
+        source_dir: Absolute path to the source directory for resolving relative paths
+
+    Returns:
+        List of resolved absolute file paths (only files that actually exist on disk).
+        Paths appear in the order they are referenced in the text, with duplicates removed.
+    """
+    # Parse \graphicspath if present (use the last declaration, as LaTeX does)
+    graphicspath_pattern = r'\\graphicspath\{((?:\{[^}]*\})+)\}'
+    graphicspath_matches = list(re.finditer(graphicspath_pattern, text))
+    search_dirs: List[str] = []
+    if graphicspath_matches:
+        last_match = graphicspath_matches[-1]
+        dir_pattern = r'\{([^}]*)\}'
+        for dir_match in re.finditer(dir_pattern, last_match.group(1)):
+            gpath = os.path.join(source_dir, dir_match.group(1))
+            if os.path.isdir(gpath):
+                search_dirs.append(gpath)
+    search_dirs.append(source_dir)
+
+    # Find all \includegraphics references
+    pattern = r'\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}'
+    matches = re.findall(pattern, text)
+
+    seen: set = set()
+    resolved_paths: List[str] = []
+    for ref in matches:
+        ref = ref.strip()
+        # Skip URL references
+        if '://' in ref:
+            continue
+        resolved = _resolve_image_path(ref, search_dirs)
+        if resolved and resolved not in seen:
+            seen.add(resolved)
+            resolved_paths.append(resolved)
+    return resolved_paths
+
+
 def list_sections(text: str) -> list:
     """Extract all section names from LaTeX content."""
     pattern = r'\\section\*?\{([^}]+)\}'
@@ -514,14 +582,15 @@ def flatten_tex(directory: str, main_file: str) -> str:
     main_file_path = os.path.join(directory, main_file)
     return process_file(main_file_path, set())
 
-def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = True, 
+def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = True,
                         cache_dir: Optional[str] = None,
                         use_cache: bool = False, remove_appendix_section: bool = False,
                         local_folder: Optional[str] = None,
-                        lock_timeout_seconds: float = 120.0) -> Optional[str]:
+                        lock_timeout_seconds: float = 120.0,
+                        figure_paths_only: bool = False) -> Optional[str]:
     """
     Process LaTeX source files from arXiv or a local folder and return the combined content.
-    
+
     Args:
         arxiv_id: The arXiv ID of the paper (required if local_folder is not provided)
         keep_comments: Whether to keep LaTeX comments in the output
@@ -530,9 +599,12 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
         remove_appendix_section: Whether to remove the appendix section and everything after it
         local_folder: Path to a local folder containing TeX files (alternative to arxiv_id)
         lock_timeout_seconds: Max seconds to wait for the per-paper cache lock
-    
+        figure_paths_only: Whether to return resolved figure file paths instead of LaTeX text
+
     Returns:
-        The processed LaTeX content or None if processing fails
+        The processed LaTeX content or None if processing fails.
+        When figure_paths_only is True, returns newline-joined absolute paths of image files
+        referenced by \\includegraphics commands.
     """
     # Determine the directory to process
     if local_folder:
@@ -580,7 +652,11 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
     # Remove appendix if requested
     if remove_appendix_section:
         content = remove_appendix(content)
-    
+
+    if figure_paths_only:
+        paths = extract_figure_paths(content, str(directory))
+        return "\n".join(paths) if paths else None
+
     return content
 
 def check_source_available(arxiv_id: str) -> bool:

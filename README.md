@@ -71,6 +71,12 @@ arxiv-to-prompt 2307.09288 --section "Human Evaluation"
 # Use path notation when the same name appears multiple times
 arxiv-to-prompt 2307.09288 --section "Fine-tuning > RLHF Results > Human Evaluation"
 
+# Output figure file paths instead of LaTeX text
+arxiv-to-prompt 2303.08774 --figure-paths
+
+# Figure paths from main body only (exclude appendix and commented-out figures)
+arxiv-to-prompt 2303.08774 --figure-paths --no-appendix --no-comments
+
 # Combine with the `llm` library from https://github.com/simonw/llm to chat about the paper
 arxiv-to-prompt 1706.03762 | llm -s "explain this paper"
 ```
@@ -99,6 +105,9 @@ latex_source = process_latex_source("2303.08774", use_cache=False)
 
 # Process LaTeX sources from a local folder (instead of downloading from arXiv)
 latex_source = process_latex_source(local_folder="/path/to/tex/files")
+
+# Get resolved figure file paths instead of LaTeX text
+figure_paths = process_latex_source("2303.08774", figure_paths_only=True)
 ```
 
 ### Projects Using arxiv-to-prompt

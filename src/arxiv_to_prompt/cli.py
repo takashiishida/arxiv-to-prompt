@@ -83,6 +83,12 @@ def main():
         default=120.0,
         help="Seconds to wait for the per-paper cache lock when another process is downloading",
     )
+    parser.add_argument(
+        "--figure-paths",
+        action="store_true",
+        default=False,
+        help="Output resolved figure file paths instead of LaTeX text",
+    )
 
     args = parser.parse_args()
     
@@ -103,6 +109,7 @@ def main():
         remove_appendix_section=args.no_appendix,
         local_folder=args.local_folder,
         lock_timeout_seconds=args.lock_timeout,
+        figure_paths_only=args.figure_paths,
     )
     if not content:
         return
