@@ -77,6 +77,9 @@ arxiv-to-prompt 2303.08774 --figure-paths
 # Figure paths from main body only (exclude appendix and commented-out figures)
 arxiv-to-prompt 2303.08774 --figure-paths --no-appendix --no-comments
 
+# Output only the abstract text
+arxiv-to-prompt 2303.08774 --abstract
+
 # Combine with the `llm` library from https://github.com/simonw/llm to chat about the paper
 arxiv-to-prompt 1706.03762 | llm -s "explain this paper"
 ```
@@ -108,6 +111,9 @@ latex_source = process_latex_source(local_folder="/path/to/tex/files")
 
 # Get resolved figure file paths instead of LaTeX text
 figure_paths = process_latex_source("2303.08774", figure_paths_only=True)
+
+# Get only the abstract text
+abstract = process_latex_source("2303.08774", abstract_only=True)
 ```
 
 ### Projects Using arxiv-to-prompt

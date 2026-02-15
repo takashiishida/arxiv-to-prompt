@@ -283,6 +283,21 @@ def remove_appendix(text: str) -> str:
     return text
 
 
+def extract_abstract(text: str) -> Optional[str]:
+    """Extract the abstract from LaTeX content.
+
+    Args:
+        text: Processed LaTeX content
+
+    Returns:
+        The abstract text, or None if no abstract found.
+    """
+    match = re.search(r'\\begin\{abstract\}(.*?)\\end\{abstract\}', text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
 _IMAGE_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.eps', '.svg']
 
 
@@ -587,7 +602,8 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
                         use_cache: bool = False, remove_appendix_section: bool = False,
                         local_folder: Optional[str] = None,
                         lock_timeout_seconds: float = 120.0,
-                        figure_paths_only: bool = False) -> Optional[str]:
+                        figure_paths_only: bool = False,
+                        abstract_only: bool = False) -> Optional[str]:
     """
     Process LaTeX source files from arXiv or a local folder and return the combined content.
 
@@ -600,11 +616,13 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
         local_folder: Path to a local folder containing TeX files (alternative to arxiv_id)
         lock_timeout_seconds: Max seconds to wait for the per-paper cache lock
         figure_paths_only: Whether to return resolved figure file paths instead of LaTeX text
+        abstract_only: Whether to return only the abstract text
 
     Returns:
         The processed LaTeX content or None if processing fails.
         When figure_paths_only is True, returns newline-joined absolute paths of image files
         referenced by \\includegraphics commands.
+        When abstract_only is True, returns the abstract text.
     """
     # Determine the directory to process
     if local_folder:
@@ -645,8 +663,8 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
     # Get the content
     content = flatten_tex(str(directory), main_file)
     
-    # Process comments if requested
-    if not keep_comments:
+    # Process comments if requested, or always when extracting abstract
+    if not keep_comments or abstract_only:
         content = remove_comments_from_lines(content)
     
     # Remove appendix if requested
@@ -656,6 +674,9 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
     if figure_paths_only:
         paths = extract_figure_paths(content, str(directory))
         return "\n".join(paths) if paths else None
+
+    if abstract_only:
+        return extract_abstract(content)
 
     return content
 
