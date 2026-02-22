@@ -298,6 +298,394 @@ def extract_abstract(text: str) -> Optional[str]:
     return None
 
 
+@dataclass
+class MacroDefinition:
+    """Represents a parsed LaTeX macro definition."""
+    name: str
+    num_args: int
+    optional_default: Optional[str]  # default value for optional first arg
+    body: str
+    is_math_operator: bool = False
+    starred: bool = False
+
+
+def _find_matching_brace(text: str, pos: int) -> int:
+    """Find the position of the closing brace matching the opening brace at pos.
+
+    Args:
+        text: The text to search in
+        pos: Position of the opening '{' character
+
+    Returns:
+        Position of the matching '}', or -1 if not found.
+    """
+    if pos >= len(text) or text[pos] != '{':
+        return -1
+    depth = 1
+    i = pos + 1
+    while i < len(text):
+        if text[i] == '\\' and i + 1 < len(text) and text[i + 1] in ('{', '}'):
+            i += 2  # skip escaped brace
+            continue
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def _find_matching_bracket(text: str, pos: int) -> int:
+    """Find the position of the closing bracket matching the opening bracket at pos.
+
+    Args:
+        text: The text to search in
+        pos: Position of the opening '[' character
+
+    Returns:
+        Position of the matching ']', or -1 if not found.
+    """
+    if pos >= len(text) or text[pos] != '[':
+        return -1
+    depth = 1
+    i = pos + 1
+    while i < len(text):
+        if text[i] == '\\' and i + 1 < len(text) and text[i + 1] in ('[', ']'):
+            i += 2
+            continue
+        if text[i] == '[':
+            depth += 1
+        elif text[i] == ']':
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def _parse_macro_definitions(text: str) -> tuple:
+    """Parse all macro definitions from LaTeX text.
+
+    Supports \\newcommand, \\renewcommand, \\providecommand (and starred variants),
+    \\DeclareMathOperator (and starred), and basic \\def\\cmd{body}.
+
+    Args:
+        text: The LaTeX source text
+
+    Returns:
+        Tuple of (dict mapping macro name to MacroDefinition, cleaned text with definitions removed).
+        For redefined macros, the last definition wins.
+    """
+    macros = {}
+    regions_to_remove = []  # (start, end) spans to remove
+
+    # Pattern for \newcommand, \renewcommand, \providecommand (with optional *)
+    cmd_pattern = re.compile(
+        r'\\(newcommand|renewcommand|providecommand)\*?\s*'
+    )
+
+    for match in cmd_pattern.finditer(text):
+        start = match.start()
+        pos = match.end()
+
+        # Skip whitespace
+        while pos < len(text) and text[pos] in ' \t':
+            pos += 1
+
+        # Extract command name: either {\\name} or \\name
+        if pos < len(text) and text[pos] == '{':
+            close = _find_matching_brace(text, pos)
+            if close == -1:
+                continue
+            cmd_name = text[pos + 1:close].strip()
+            pos = close + 1
+        elif pos < len(text) and text[pos] == '\\':
+            # \newcommand\foo{...} form
+            name_match = re.match(r'\\([a-zA-Z@]+)', text[pos:])
+            if not name_match:
+                continue
+            cmd_name = '\\' + name_match.group(1)
+            pos += name_match.end()
+        else:
+            continue
+
+        if not cmd_name.startswith('\\'):
+            cmd_name = '\\' + cmd_name
+
+        # Skip whitespace
+        while pos < len(text) and text[pos] in ' \t':
+            pos += 1
+
+        # Optional [num_args]
+        num_args = 0
+        if pos < len(text) and text[pos] == '[':
+            bracket_close = _find_matching_bracket(text, pos)
+            if bracket_close == -1:
+                continue
+            try:
+                num_args = int(text[pos + 1:bracket_close].strip())
+            except ValueError:
+                continue
+            pos = bracket_close + 1
+
+        # Skip whitespace
+        while pos < len(text) and text[pos] in ' \t':
+            pos += 1
+
+        # Optional [default] for first argument
+        optional_default = None
+        if pos < len(text) and text[pos] == '[':
+            bracket_close = _find_matching_bracket(text, pos)
+            if bracket_close == -1:
+                continue
+            optional_default = text[pos + 1:bracket_close]
+            pos = bracket_close + 1
+
+        # Skip whitespace
+        while pos < len(text) and text[pos] in ' \t':
+            pos += 1
+
+        # Body in braces
+        if pos >= len(text) or text[pos] != '{':
+            continue
+        body_close = _find_matching_brace(text, pos)
+        if body_close == -1:
+            continue
+        body = text[pos + 1:body_close]
+
+        starred = '*' in match.group(0)
+        macros[cmd_name] = MacroDefinition(
+            name=cmd_name,
+            num_args=num_args,
+            optional_default=optional_default,
+            body=body,
+            starred=starred,
+        )
+
+        # Mark entire definition for removal (including trailing newline)
+        end = body_close + 1
+        if end < len(text) and text[end] == '\n':
+            end += 1
+        regions_to_remove.append((start, end))
+
+    # Pattern for \DeclareMathOperator{\\name}{text} and \DeclareMathOperator*{\\name}{text}
+    decl_pattern = re.compile(r'\\DeclareMathOperator(\*?)\s*')
+    for match in decl_pattern.finditer(text):
+        start = match.start()
+        starred = match.group(1) == '*'
+        pos = match.end()
+
+        # Skip whitespace
+        while pos < len(text) and text[pos] in ' \t':
+            pos += 1
+
+        # {\\name}
+        if pos >= len(text) or text[pos] != '{':
+            continue
+        close = _find_matching_brace(text, pos)
+        if close == -1:
+            continue
+        cmd_name = text[pos + 1:close].strip()
+        if not cmd_name.startswith('\\'):
+            cmd_name = '\\' + cmd_name
+        pos = close + 1
+
+        # Skip whitespace
+        while pos < len(text) and text[pos] in ' \t':
+            pos += 1
+
+        # {text}
+        if pos >= len(text) or text[pos] != '{':
+            continue
+        body_close = _find_matching_brace(text, pos)
+        if body_close == -1:
+            continue
+        op_text = text[pos + 1:body_close]
+
+        if starred:
+            body = f'\\operatorname*{{{op_text}}}'
+        else:
+            body = f'\\operatorname{{{op_text}}}'
+
+        macros[cmd_name] = MacroDefinition(
+            name=cmd_name,
+            num_args=0,
+            optional_default=None,
+            body=body,
+            is_math_operator=True,
+            starred=starred,
+        )
+
+        end = body_close + 1
+        if end < len(text) and text[end] == '\n':
+            end += 1
+        regions_to_remove.append((start, end))
+
+    # Pattern for basic \def\cmd{body} (zero-arg only)
+    def_pattern = re.compile(r'\\def\s*(\\[a-zA-Z@]+)\s*')
+    for match in def_pattern.finditer(text):
+        start = match.start()
+        cmd_name = match.group(1)
+        pos = match.end()
+
+        # Skip whitespace
+        while pos < len(text) and text[pos] in ' \t':
+            pos += 1
+
+        if pos >= len(text) or text[pos] != '{':
+            continue
+        body_close = _find_matching_brace(text, pos)
+        if body_close == -1:
+            continue
+        body = text[pos + 1:body_close]
+
+        macros[cmd_name] = MacroDefinition(
+            name=cmd_name,
+            num_args=0,
+            optional_default=None,
+            body=body,
+        )
+
+        end = body_close + 1
+        if end < len(text) and text[end] == '\n':
+            end += 1
+        regions_to_remove.append((start, end))
+
+    # Remove definition regions from text (process in reverse to preserve positions)
+    # Merge overlapping regions first
+    regions_to_remove.sort()
+    merged = []
+    for s, e in regions_to_remove:
+        if merged and s <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+
+    cleaned = text
+    for s, e in reversed(merged):
+        cleaned = cleaned[:s] + cleaned[e:]
+
+    return macros, cleaned
+
+
+def _expand_single_macro(text: str, macro: MacroDefinition) -> str:
+    """Expand all usages of a single macro in the text.
+
+    Args:
+        text: The LaTeX text
+        macro: The macro definition to expand
+
+    Returns:
+        Text with all usages of this macro expanded.
+    """
+    name_escaped = re.escape(macro.name)
+
+    if macro.num_args == 0:
+        # Zero-arg macro: replace \cmd not followed by [a-zA-Z]
+        pattern = re.compile(name_escaped + r'(?![a-zA-Z@])')
+        # Use lambda to avoid backslash interpretation in replacement string
+        text = pattern.sub(lambda m: macro.body, text)
+        return text
+
+    # Macro with arguments: find each usage and expand
+    pattern = re.compile(name_escaped + r'(?![a-zA-Z@])')
+    replacements = []  # (start, end, replacement_text)
+
+    for match in pattern.finditer(text):
+        usage_start = match.start()
+        pos = match.end()
+
+        # Skip whitespace between command and first arg
+        while pos < len(text) and text[pos] in ' \t\n':
+            pos += 1
+
+        args = []
+        has_optional = macro.optional_default is not None
+        used_default = False
+
+        if has_optional:
+            # Check for optional first argument [...]
+            if pos < len(text) and text[pos] == '[':
+                bracket_close = _find_matching_bracket(text, pos)
+                if bracket_close == -1:
+                    continue
+                args.append(text[pos + 1:bracket_close])
+                pos = bracket_close + 1
+            else:
+                args.append(macro.optional_default)
+                used_default = True
+
+            # Parse remaining mandatory args
+            remaining = macro.num_args - 1
+        else:
+            remaining = macro.num_args
+
+        success = True
+        for _ in range(remaining):
+            # Skip whitespace
+            while pos < len(text) and text[pos] in ' \t\n':
+                pos += 1
+            if pos >= len(text) or text[pos] != '{':
+                success = False
+                break
+            brace_close = _find_matching_brace(text, pos)
+            if brace_close == -1:
+                success = False
+                break
+            args.append(text[pos + 1:brace_close])
+            pos = brace_close + 1
+
+        if not success or len(args) != macro.num_args:
+            continue
+
+        # Substitute #1..#9 in body
+        result = macro.body
+        for i, arg in enumerate(args, 1):
+            result = result.replace(f'#{i}', arg)
+
+        replacements.append((usage_start, pos, result))
+
+    # Apply replacements in reverse order
+    for start, end, replacement in reversed(replacements):
+        text = text[:start] + replacement + text[end:]
+
+    return text
+
+
+def expand_macros(text: str) -> str:
+    """Expand all custom LaTeX macro definitions inline and remove definition lines.
+
+    Supports \\newcommand, \\renewcommand, \\providecommand (and starred variants),
+    \\DeclareMathOperator (and starred), and basic \\def\\cmd{body}.
+
+    Handles macros with zero arguments, positional arguments (#1..#9),
+    and optional first arguments with defaults. Nested macro expansion
+    is handled via multiple passes (up to 10 iterations).
+
+    Args:
+        text: The LaTeX source text
+
+    Returns:
+        Text with all macro usages expanded and definition lines removed.
+    """
+    macros, text = _parse_macro_definitions(text)
+
+    if not macros:
+        return text
+
+    # Iteratively expand until stable (handles nested macros)
+    for _ in range(10):
+        previous = text
+        for macro in macros.values():
+            text = _expand_single_macro(text, macro)
+        if text == previous:
+            break
+
+    return text
+
+
 _IMAGE_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.eps', '.svg']
 
 
@@ -603,7 +991,8 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
                         local_folder: Optional[str] = None,
                         lock_timeout_seconds: float = 120.0,
                         figure_paths_only: bool = False,
-                        abstract_only: bool = False) -> Optional[str]:
+                        abstract_only: bool = False,
+                        expand_macros_flag: bool = False) -> Optional[str]:
     """
     Process LaTeX source files from arXiv or a local folder and return the combined content.
 
@@ -617,6 +1006,7 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
         lock_timeout_seconds: Max seconds to wait for the per-paper cache lock
         figure_paths_only: Whether to return resolved figure file paths instead of LaTeX text
         abstract_only: Whether to return only the abstract text
+        expand_macros_flag: Whether to expand \\newcommand and related macro definitions inline
 
     Returns:
         The processed LaTeX content or None if processing fails.
@@ -666,7 +1056,11 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
     # Process comments if requested, or always when extracting abstract
     if not keep_comments or abstract_only:
         content = remove_comments_from_lines(content)
-    
+
+    # Expand macros if requested
+    if expand_macros_flag:
+        content = expand_macros(content)
+
     # Remove appendix if requested
     if remove_appendix_section:
         content = remove_appendix(content)

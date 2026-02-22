@@ -80,6 +80,9 @@ arxiv-to-prompt 2303.08774 --figure-paths --no-appendix --no-comments
 # Output only the abstract text
 arxiv-to-prompt 2303.08774 --abstract
 
+# Expand \newcommand and related macro definitions inline
+arxiv-to-prompt 2303.08774 --expand-macros
+
 # Combine with the `llm` library from https://github.com/simonw/llm to chat about the paper
 arxiv-to-prompt 1706.03762 | llm -s "explain this paper"
 ```
@@ -114,6 +117,9 @@ figure_paths = process_latex_source("2303.08774", figure_paths_only=True)
 
 # Get only the abstract text
 abstract = process_latex_source("2303.08774", abstract_only=True)
+
+# Expand custom macro definitions inline
+latex_source = process_latex_source("2303.08774", expand_macros_flag=True)
 ```
 
 ### Projects Using arxiv-to-prompt
