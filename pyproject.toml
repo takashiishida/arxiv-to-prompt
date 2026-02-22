@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "arxiv-to-prompt"
-version = "0.10.0"
+version = "0.11.0"
 description = "transform arXiv papers into a single latex prompt for LLMs"
 readme = "README.md"
 authors = [{ name = "Takashi Ishida" }]

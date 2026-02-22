@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.11.0 (2026-02-22)
+- Add `--expand-macros` flag to expand `\newcommand` and related macro definitions inline. Supports `\newcommand`, `\renewcommand`, `\providecommand` (and starred variants), `\DeclareMathOperator` (and starred), and basic `\def`. Handles macros with arguments and nested expansion. [#3](https://github.com/takashiishida/arxiv-to-prompt/issues/3) [#24](https://github.com/takashiishida/arxiv-to-prompt/pull/24)
+
 ## 0.10.0 (2026-02-15)
 - Add `--figure-paths` flag to output resolved image file paths instead of LaTeX text. Respects `--no-comments` and `--no-appendix` filters. [#22](https://github.com/takashiishida/arxiv-to-prompt/pull/22)
 - Add `--abstract` flag to output only the abstract text. Comments are automatically stripped to avoid extracting commented-out abstracts. [#23](https://github.com/takashiishida/arxiv-to-prompt/pull/23)
