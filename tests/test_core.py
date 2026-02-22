@@ -19,6 +19,11 @@ from arxiv_to_prompt.core import (
     extract_section,
     extract_figure_paths,
     extract_abstract,
+    expand_macros,
+    MacroDefinition,
+    _find_matching_brace,
+    _parse_macro_definitions,
+    _expand_single_macro,
     SectionNode,
     parse_section_tree,
     format_section_tree,
@@ -1435,3 +1440,302 @@ def test_cli_figure_paths_and_list_sections_error(temp_cache_dir, monkeypatch):
     ])
     with pytest.raises(SystemExit):
         main()
+
+
+# ── Macro expansion tests ─────────────────────────────────────────────
+
+
+def test_find_matching_brace_simple():
+    """Test basic brace matching."""
+    assert _find_matching_brace("{hello}", 0) == 6
+    assert _find_matching_brace("x{ab}y", 1) == 4
+
+
+def test_find_matching_brace_nested():
+    """Test nested brace matching."""
+    assert _find_matching_brace("{a{b}c}", 0) == 6
+    assert _find_matching_brace("{a{b{c}}d}", 0) == 9
+
+
+def test_find_matching_brace_escaped():
+    """Test that escaped braces are handled."""
+    assert _find_matching_brace(r"{a\{b}", 0) == 5
+    assert _find_matching_brace(r"{a\}b}", 0) == 5
+
+
+def test_find_matching_brace_unmatched():
+    """Test unmatched braces return -1."""
+    assert _find_matching_brace("{no close", 0) == -1
+    assert _find_matching_brace("no brace", 0) == -1
+    assert _find_matching_brace("{", 0) == -1
+
+
+def test_expand_zero_arg_macro():
+    """Test expansion of zero-argument macros."""
+    text = r"""\newcommand{\R}{\mathbb{R}}
+Some text with \R and more \R here."""
+    result = expand_macros(text)
+    assert r"\mathbb{R}" in result
+    assert r"\newcommand" not in result
+    assert r"\R" not in result
+
+
+def test_expand_single_arg_macro():
+    """Test expansion of single-argument macros."""
+    text = r"""\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+The norm is \norm{x}."""
+    result = expand_macros(text)
+    assert r"\left\lVert x \right\rVert" in result
+    assert r"\norm" not in result
+    assert r"\newcommand" not in result
+
+
+def test_expand_multi_arg_macro():
+    """Test expansion of macros with multiple arguments."""
+    text = r"""\newcommand{\inner}[2]{\langle #1, #2 \rangle}
+The inner product is \inner{x}{y}."""
+    result = expand_macros(text)
+    assert r"\langle x, y \rangle" in result
+    assert r"\inner" not in result
+
+
+def test_expand_optional_arg_with_default():
+    """Test macro with optional argument using default value."""
+    text = r"""\newcommand{\foo}[2][default]{#1 and #2}
+Result: \foo{bar}."""
+    result = expand_macros(text)
+    assert "default and bar" in result
+    assert r"\foo" not in result
+
+
+def test_expand_optional_arg_overridden():
+    """Test macro with optional argument overridden."""
+    text = r"""\newcommand{\foo}[2][default]{#1 and #2}
+Result: \foo[custom]{bar}."""
+    result = expand_macros(text)
+    assert "custom and bar" in result
+    assert r"\foo" not in result
+
+
+def test_expand_renewcommand():
+    """Test \\renewcommand expansion."""
+    text = r"""\renewcommand{\vec}[1]{\mathbf{#1}}
+The vector is \vec{v}."""
+    result = expand_macros(text)
+    assert r"\mathbf{v}" in result
+    assert r"\renewcommand" not in result
+
+
+def test_expand_providecommand():
+    """Test \\providecommand expansion."""
+    text = r"""\providecommand{\eps}{\varepsilon}
+The value is \eps."""
+    result = expand_macros(text)
+    assert r"\varepsilon" in result
+    assert r"\providecommand" not in result
+
+
+def test_expand_starred_newcommand():
+    """Test starred \\newcommand* expansion."""
+    text = r"""\newcommand*{\R}{\mathbb{R}}
+Space \R here."""
+    result = expand_macros(text)
+    assert r"\mathbb{R}" in result
+    assert r"\newcommand" not in result
+
+
+def test_expand_declare_math_operator():
+    """Test \\DeclareMathOperator expansion."""
+    text = r"""\DeclareMathOperator{\argmax}{arg\,max}
+We compute \argmax of f."""
+    result = expand_macros(text)
+    assert r"\operatorname{arg\,max}" in result
+    assert r"\DeclareMathOperator" not in result
+
+
+def test_expand_declare_math_operator_starred():
+    """Test \\DeclareMathOperator* expansion."""
+    text = r"""\DeclareMathOperator*{\argmin}{arg\,min}
+We compute \argmin of f."""
+    result = expand_macros(text)
+    assert r"\operatorname*{arg\,min}" in result
+    assert r"\DeclareMathOperator" not in result
+
+
+def test_expand_basic_def():
+    """Test basic \\def expansion."""
+    text = r"""\def\RR{\mathbb{R}}
+Space \RR here."""
+    result = expand_macros(text)
+    assert r"\mathbb{R}" in result
+    assert r"\def" not in result
+    assert r"\RR" not in result
+
+
+def test_expand_nested_macros():
+    """Test nested macro expansion (one macro uses another)."""
+    text = r"""\newcommand{\R}{\mathbb{R}}
+\newcommand{\Rn}{\R^n}
+The space \Rn is nice."""
+    result = expand_macros(text)
+    assert r"\mathbb{R}^n" in result
+    assert r"\R" not in result.replace(r"\mathbb{R}", "")
+
+
+def test_expand_unused_definition_removed():
+    """Test that unused macro definitions are still removed."""
+    text = r"""\newcommand{\unused}{\something}
+No usage here."""
+    result = expand_macros(text)
+    assert r"\newcommand" not in result
+    assert r"\unused" not in result
+    assert "No usage here." in result
+
+
+def test_expand_redefinition_last_wins():
+    """Test that the last definition wins for redefined macros."""
+    text = r"""\newcommand{\foo}{first}
+\renewcommand{\foo}{second}
+Result: \foo."""
+    result = expand_macros(text)
+    assert "second" in result
+    assert "first" not in result
+
+
+def test_expand_word_boundary():
+    """Test that \\Re does not match \\Real."""
+    text = r"""\newcommand{\Re}{\mathrm{Re}}
+Use \Re and \Real separately."""
+    result = expand_macros(text)
+    assert r"\mathrm{Re}" in result
+    assert r"\Real" in result  # \Real should remain untouched
+
+
+def test_expand_nested_braces_in_args():
+    """Test arguments containing nested braces."""
+    text = r"""\newcommand{\wrap}[1]{[\![#1]\!]}
+Result: \wrap{a{b}c}."""
+    result = expand_macros(text)
+    assert r"[\![a{b}c]\!]" in result
+
+
+def test_expand_multiple_usage_sites():
+    """Test that all usage sites are expanded."""
+    text = r"""\newcommand{\R}{\mathbb{R}}
+First \R, second \R, third \R."""
+    result = expand_macros(text)
+    assert result.count(r"\mathbb{R}") == 3
+    assert r"\newcommand" not in result
+
+
+def test_expand_preserves_non_macro_content():
+    """Test that non-macro content is preserved."""
+    text = r"""\newcommand{\R}{\mathbb{R}}
+\section{Introduction}
+This paper studies \R.
+\begin{equation}
+x \in \R
+\end{equation}"""
+    result = expand_macros(text)
+    assert r"\section{Introduction}" in result
+    assert r"\begin{equation}" in result
+    assert r"\end{equation}" in result
+    assert result.count(r"\mathbb{R}") == 2
+
+
+def test_expand_newcommand_without_braces_around_name():
+    """Test \\newcommand\\foo{body} form (no braces around name)."""
+    text = r"""\newcommand\R{\mathbb{R}}
+Use \R here."""
+    result = expand_macros(text)
+    assert r"\mathbb{R}" in result
+    assert r"\newcommand" not in result
+
+
+def test_process_latex_source_expand_macros(temp_cache_dir):
+    """Integration test: process_latex_source with expand_macros_flag=True."""
+    tex_dir = temp_cache_dir / "test_expand"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "main.tex").write_text(
+        "\\documentclass{article}\n"
+        "\\newcommand{\\R}{\\mathbb{R}}\n"
+        "\\begin{document}\n"
+        "We study \\R.\n"
+        "\\end{document}\n"
+    )
+
+    result = process_latex_source(
+        local_folder=str(tex_dir),
+        expand_macros_flag=True,
+    )
+    assert result is not None
+    assert "\\mathbb{R}" in result
+    assert "\\newcommand" not in result
+
+
+def test_process_latex_source_expand_macros_default_off(temp_cache_dir):
+    """Integration test: expand_macros_flag defaults to False."""
+    tex_dir = temp_cache_dir / "test_no_expand"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "main.tex").write_text(
+        "\\documentclass{article}\n"
+        "\\newcommand{\\R}{\\mathbb{R}}\n"
+        "\\begin{document}\n"
+        "We study \\R.\n"
+        "\\end{document}\n"
+    )
+
+    result = process_latex_source(
+        local_folder=str(tex_dir),
+    )
+    assert result is not None
+    assert "\\newcommand" in result  # definition preserved
+
+
+def test_cli_expand_macros_flag(temp_cache_dir, monkeypatch, capsys):
+    """Test that --expand-macros passes expand_macros_flag=True."""
+    captured_kwargs = {}
+
+    def mock_process(**kwargs):
+        captured_kwargs.update(kwargs)
+        return "\\documentclass{article}"
+
+    monkeypatch.setattr("arxiv_to_prompt.cli.process_latex_source", mock_process)
+
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--cache-dir", str(temp_cache_dir),
+        "--expand-macros",
+    ])
+    main()
+    assert captured_kwargs["expand_macros_flag"] is True
+
+    # Without flag
+    captured_kwargs.clear()
+    monkeypatch.setattr("sys.argv", [
+        "arxiv-to-prompt", "2303.08774",
+        "--cache-dir", str(temp_cache_dir),
+    ])
+    main()
+    assert captured_kwargs["expand_macros_flag"] is False
+
+
+def test_expand_no_definitions():
+    """Test that text without macro definitions is returned unchanged."""
+    text = r"""\section{Introduction}
+Regular text with \textbf{bold} and \emph{emphasis}."""
+    result = expand_macros(text)
+    assert result == text
+
+
+def test_expand_macros_with_comment_removal():
+    """Test that macro expansion works after comment removal."""
+    text = r"""% \newcommand{\old}{should be ignored}
+\newcommand{\R}{\mathbb{R}}
+Use \R here."""
+    # Remove comments first
+    from arxiv_to_prompt.core import remove_comments_from_lines
+    text = remove_comments_from_lines(text)
+    result = expand_macros(text)
+    assert r"\mathbb{R}" in result
+    assert r"\old" not in result

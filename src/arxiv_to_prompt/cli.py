@@ -97,6 +97,13 @@ def main():
         help="Output only the abstract text",
     )
 
+    parser.add_argument(
+        "--expand-macros",
+        action="store_true",
+        default=False,
+        help="Expand \\newcommand and related macro definitions inline",
+    )
+
     args = parser.parse_args()
 
     # Validate that either arxiv_id or local_folder is provided
@@ -134,6 +141,7 @@ def main():
         lock_timeout_seconds=args.lock_timeout,
         figure_paths_only=args.figure_paths,
         abstract_only=args.abstract,
+        expand_macros_flag=args.expand_macros,
     )
     if not content:
         return
