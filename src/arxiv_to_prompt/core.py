@@ -961,7 +961,7 @@ def flatten_tex(directory: str, main_file: str) -> str:
                     return match.group(0)  # Return the original text without processing
                 
                 # Process the command normally
-                input_file = match.group(1)
+                input_file = match.group(1).strip()
                 # LaTeX's \input tries filename.tex first, then bare filename.
                 # e.g. \input{ch1} -> ch1.tex, \input{ref.bbl} -> ref.bbl.tex (not found) -> ref.bbl
                 # See https://latexref.xyz/_005cinput.html

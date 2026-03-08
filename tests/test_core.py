@@ -383,6 +383,26 @@ def test_input_file_with_dots_in_path(temp_cache_dir):
     assert "Dataset section content" in result
 
 
+def test_input_file_with_trailing_whitespace(temp_cache_dir):
+    """Test that \\input with trailing whitespace in filename resolves correctly."""
+    tex_dir = temp_cache_dir / "test_whitespace"
+    tex_dir.mkdir(parents=True)
+    (tex_dir / "sections").mkdir()
+
+    main_file = tex_dir / "main.tex"
+    main_file.write_text(
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\input{sections/appendix }%% some comment\n"
+        "\\end{document}\n"
+    )
+
+    (tex_dir / "sections" / "appendix.tex").write_text("Appendix content")
+
+    result = flatten_tex(str(tex_dir), "main.tex")
+    assert "Appendix content" in result
+
+
 def test_extract_arxiv_id():
     """Test extracting arxiv ID from URLs and plain IDs."""
     # Plain IDs should be returned as-is
