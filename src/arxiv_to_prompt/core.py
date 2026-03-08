@@ -756,8 +756,13 @@ def extract_figure_paths(text: str, source_dir: str) -> List[str]:
 
 def list_sections(text: str) -> list:
     """Extract all section names from LaTeX content."""
-    pattern = r'\\section\*?\{([^}]+)\}'
-    return re.findall(pattern, text)
+    results = []
+    for match in re.finditer(r'\\section\*?\{', text):
+        brace_start = match.end() - 1
+        brace_end = _find_matching_brace(text, brace_start)
+        if brace_end != -1:
+            results.append(text[brace_start + 1:brace_end])
+    return results
 
 
 @dataclass
@@ -777,24 +782,22 @@ def parse_section_tree(text: str) -> List[SectionNode]:
 
     Returns a list of top-level section nodes, each containing their subsections as children.
     """
-    # Match section, subsection, and subsubsection commands
-    pattern = r'\\(section|subsection|subsubsection)\*?\{([^}]+)\}'
-
     level_map = {'section': 0, 'subsection': 1, 'subsubsection': 2}
 
-    # Find all section commands with their positions
-    matches = list(re.finditer(pattern, text))
-
-    if not matches:
-        return []
-
-    # Create nodes for all sections
+    # Find all section commands, using brace matching to handle nested braces
     all_nodes = []
-    for match in matches:
+    for match in re.finditer(r'\\(section|subsection|subsubsection)\*?\{', text):
+        brace_start = match.end() - 1
+        brace_end = _find_matching_brace(text, brace_start)
+        if brace_end == -1:
+            continue
         level = level_map[match.group(1)]
-        name = match.group(2)
+        name = text[brace_start + 1:brace_end]
         start_pos = match.start()
         all_nodes.append(SectionNode(level=level, name=name, start_pos=start_pos))
+
+    if not all_nodes:
+        return []
 
     # Calculate end positions (each section ends where the next same-or-higher level starts)
     for i, node in enumerate(all_nodes):
