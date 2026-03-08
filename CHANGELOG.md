@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 (2026-03-08)
+- Fix `\input` failing when filename has trailing whitespace (e.g. `\input{appendix }`). [#27](https://github.com/takashiishida/arxiv-to-prompt/issues/27)
+- Fix `--list-sections` and `--section` truncating titles containing nested braces (e.g. `\section{Proof of \ref{thm:foo}}`). [#25](https://github.com/takashiishida/arxiv-to-prompt/issues/25)
+
 ## 0.11.0 (2026-02-22)
 - Add `--expand-macros` flag to expand `\newcommand` and related macro definitions inline. Supports `\newcommand`, `\renewcommand`, `\providecommand` (and starred variants), `\DeclareMathOperator` (and starred), and basic `\def`. Handles macros with arguments and nested expansion. [#3](https://github.com/takashiishida/arxiv-to-prompt/issues/3) [#24](https://github.com/takashiishida/arxiv-to-prompt/pull/24)
 
