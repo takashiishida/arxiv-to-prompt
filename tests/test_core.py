@@ -443,6 +443,39 @@ Thanks.
     assert sections == ["Introduction", "Methods", "Acknowledgments"]
 
 
+def test_list_sections_nested_braces():
+    """Test that section titles with nested braces are not truncated."""
+    text = r"""
+\section{Core \method{}}
+Some text.
+\section{Proof of Thm~\ref{thm:soandsp-ext}}
+More text.
+\section{Simple Title}
+Final text.
+"""
+    sections = list_sections(text)
+    assert sections == [
+        r"Core \method{}",
+        r"Proof of Thm~\ref{thm:soandsp-ext}",
+        "Simple Title",
+    ]
+
+
+def test_parse_section_tree_nested_braces():
+    """Test that parse_section_tree handles nested braces in titles."""
+    text = r"""
+\section{Results of \method{}}
+Some results.
+\subsection{Analysis of \ref{fig:main}}
+Details.
+"""
+    tree = parse_section_tree(text)
+    assert len(tree) == 1
+    assert tree[0].name == r"Results of \method{}"
+    assert len(tree[0].children) == 1
+    assert tree[0].children[0].name == r"Analysis of \ref{fig:main}"
+
+
 def test_extract_section():
     """Test extracting a specific section."""
     text = r"""
