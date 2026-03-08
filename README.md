@@ -129,6 +129,5 @@ Here are some projects and use cases that leverage arxiv-to-prompt:
 - [arxiv-latex-mcp](https://github.com/takashiishida/arxiv-latex-mcp): MCP server that fetch and process arXiv LaTeX sources for precise interpretation of mathematical expressions in papers.
 - [arxiv-tex-ui](https://github.com/takashiishida/arxiv-tex-ui): chat with an LLM about an arxiv paper by using the latex source.
 - [paper2slides](https://github.com/takashiishida/paper2slides): transform an arXiv paper into slides.
+- [notations-cli](https://github.com/takashiishida/notations-cli): extract notation tables from arXiv papers using LLMs, generating searchable HTML documentation of mathematical symbols and their definitions.
 - [ArXivToPrompt](https://apps.apple.com/jp/app/arxivtoprompt/id6751013390): iOS app that allows users to easily extract LaTeX source from arXiv papers on their iPhone and copy it to the clipboard for use with LLM apps. 
-
-If you're using arxiv-to-prompt in your project, please submit a pull request to add it to this list!
