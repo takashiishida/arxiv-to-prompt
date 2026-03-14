@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.13.0 (2026-03-15)
+- **Breaking**: `--token-count` now prints just the token count to stdout instead of printing the full prompt to stdout and the count to stderr. Consistent with other output-mode flags (`--list-sections`, `--figure-paths`, `--abstract`). [#34](https://github.com/takashiishida/arxiv-to-prompt/issues/34)
+
 ## 0.12.1 (2026-03-14)
 - Add `--version` flag to print the installed version.
 
