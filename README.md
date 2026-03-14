@@ -83,6 +83,14 @@ arxiv-to-prompt 2303.08774 --abstract
 # Expand \newcommand and related macro definitions inline
 arxiv-to-prompt 2303.08774 --expand-macros
 
+# Print token count to stderr (requires pip install 'arxiv-to-prompt[tokens]')
+arxiv-to-prompt 2303.08774 --token-count
+# Token count: 94253
+
+# Combine with other flags to see how they affect token count
+arxiv-to-prompt 2303.08774 --no-comments --no-appendix --token-count > /dev/null
+# Token count: 62451
+
 # Combine with the `llm` library from https://github.com/simonw/llm to chat about the paper
 arxiv-to-prompt 1706.03762 | llm -s "explain this paper"
 ```
@@ -120,6 +128,10 @@ abstract = process_latex_source("2303.08774", abstract_only=True)
 
 # Expand custom macro definitions inline
 latex_source = process_latex_source("2303.08774", expand_macros_flag=True)
+
+# Count tokens (requires pip install 'arxiv-to-prompt[tokens]')
+from arxiv_to_prompt import count_tokens
+token_count = count_tokens(latex_source)
 ```
 
 ### Projects Using arxiv-to-prompt
