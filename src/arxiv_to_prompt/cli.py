@@ -1,6 +1,7 @@
 import argparse
 import re
 import sys
+from . import __version__
 from .core import (
     process_latex_source,
     get_default_cache_dir,
@@ -15,10 +16,11 @@ from .core import (
 
 def main():
     default_cache = str(get_default_cache_dir())
-    
+
     parser = argparse.ArgumentParser(
         description="Download and display LaTeX source from arXiv papers or process local TeX files."
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
         "arxiv_id",
         nargs="?",
