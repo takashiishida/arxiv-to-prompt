@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.12.1 (2026-03-14)
+- Add `--version` flag to print the installed version.
+
 ## 0.12.0 (2026-03-14)
 - Add `--token-count` flag to print tiktoken token count to stderr. Available as `count_tokens()` in the Python API. Requires optional `tiktoken` dependency (`pip install 'arxiv-to-prompt[tokens]'`). [#14](https://github.com/takashiishida/arxiv-to-prompt/issues/14)
 - `process_latex_source()`, `download_arxiv_source()`, and `check_source_available()` now accept arXiv URLs in addition to bare IDs, matching CLI behavior. [#30](https://github.com/takashiishida/arxiv-to-prompt/issues/30)
