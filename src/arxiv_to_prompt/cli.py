@@ -6,19 +6,11 @@ from .core import (
     get_default_cache_dir,
     list_sections,
     extract_section,
+    extract_arxiv_id,
     parse_section_tree,
     format_section_tree,
     find_all_by_name,
 )
-
-
-def extract_arxiv_id(input_str: str) -> str:
-    """Extract arxiv ID from URL or return input as-is if already an ID."""
-    if "arxiv.org" in input_str:
-        match = re.search(r'arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})(?:v\d+)?(?:\.pdf)?', input_str)
-        if match:
-            return match.group(1)
-    return input_str
 
 def main():
     default_cache = str(get_default_cache_dir())

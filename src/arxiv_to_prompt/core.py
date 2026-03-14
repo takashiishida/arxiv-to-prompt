@@ -16,6 +16,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 _CACHE_COMPLETE_MARKER = ".arxiv_cache_complete"
 
+
+def extract_arxiv_id(input_str: str) -> str:
+    """Extract arxiv ID from URL or return input as-is if already an ID."""
+    if "arxiv.org" in input_str:
+        match = re.search(r'arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})(?:v\d+)?(?:\.pdf)?', input_str)
+        if match:
+            return match.group(1)
+    return input_str
+
 def get_default_cache_dir() -> Path:
     """Get the default cache directory for downloaded files."""
     # Use standard OS-specific cache directory
@@ -93,6 +102,7 @@ def download_arxiv_source(
     Returns:
         bool: True if download successful, False if failed (including when source not available)
     """
+    arxiv_id = extract_arxiv_id(arxiv_id)
     # Use provided cache_dir or default
     base_dir = Path(cache_dir) if cache_dir else get_default_cache_dir()
     directory = base_dir / arxiv_id
@@ -1020,18 +1030,19 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
     # Determine the directory to process
     if local_folder:
         directory = Path(local_folder).expanduser().resolve()
-        
+
         # Validate the folder exists
         if not directory.exists():
             logging.error(f"Local folder does not exist: {directory}")
             return None
-        
+
         if not directory.is_dir():
             logging.error(f"Path is not a directory: {directory}")
             return None
-        
+
         logging.info(f"Processing local folder: {directory}")
     elif arxiv_id:
+        arxiv_id = extract_arxiv_id(arxiv_id)
         base_dir = Path(cache_dir) if cache_dir else get_default_cache_dir()
         
         # Download the latest version
@@ -1079,6 +1090,7 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
 
 def check_source_available(arxiv_id: str) -> bool:
     """Check if source files are available by checking the format page."""
+    arxiv_id = extract_arxiv_id(arxiv_id)
     url = f'https://arxiv.org/format/{arxiv_id}'
     headers = {
         'User-Agent': 'Mozilla/5.0'
