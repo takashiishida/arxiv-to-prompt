@@ -103,7 +103,7 @@ def main():
         "--token-count",
         action="store_true",
         default=False,
-        help="Print the tiktoken token count to stderr (requires pip install 'arxiv-to-prompt[tokens]')",
+        help="Print the tiktoken token count instead of the full prompt (requires pip install 'arxiv-to-prompt[tokens]')",
     )
 
     args = parser.parse_args()
@@ -130,6 +130,10 @@ def main():
         parser.error("Cannot use both --figure-paths and --section")
     if args.figure_paths and args.list_sections:
         parser.error("Cannot use both --figure-paths and --list-sections")
+    if args.token_count and args.copy:
+        parser.error("Cannot use both --token-count and --copy")
+    if args.token_count and args.list_sections:
+        parser.error("Cannot use both --token-count and --list-sections")
 
     arxiv_id = extract_arxiv_id(args.arxiv_id) if args.arxiv_id else None
 
@@ -180,10 +184,10 @@ def main():
     if args.token_count:
         try:
             tokens = count_tokens(output)
-            print(f"Token count: {tokens}", file=sys.stderr)
+            print(tokens)
         except ImportError as e:
             print(f"Error: {e}", file=sys.stderr)
-            return
+        return
 
     if args.copy:
         try:

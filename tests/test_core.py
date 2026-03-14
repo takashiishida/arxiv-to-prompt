@@ -1852,7 +1852,7 @@ def test_count_tokens_empty():
 
 
 def test_token_count_cli_flag(sample_arxiv_id, temp_cache_dir, capsys):
-    """--token-count should print token count to stderr."""
+    """--token-count should print token count to stdout."""
     # Pre-populate cache so no network call is needed
     cache_dir = temp_cache_dir / sample_arxiv_id
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -1865,4 +1865,5 @@ def test_token_count_cli_flag(sample_arxiv_id, temp_cache_dir, capsys):
                 "--cache-dir", str(temp_cache_dir), "--token-count"]
     main()
     captured = capsys.readouterr()
-    assert "Token count:" in captured.err
+    assert captured.out.strip().isdigit()
+    assert captured.err == ""
