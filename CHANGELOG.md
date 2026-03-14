@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 (2026-03-14)
+- Add `--token-count` flag to print tiktoken token count to stderr. Available as `count_tokens()` in the Python API. Requires optional `tiktoken` dependency (`pip install 'arxiv-to-prompt[tokens]'`). [#14](https://github.com/takashiishida/arxiv-to-prompt/issues/14)
+- `process_latex_source()`, `download_arxiv_source()`, and `check_source_available()` now accept arXiv URLs in addition to bare IDs, matching CLI behavior. [#30](https://github.com/takashiishida/arxiv-to-prompt/issues/30)
+
 ## 0.11.1 (2026-03-08)
 - Fix `\input` failing when filename has trailing whitespace (e.g. `\input{appendix }`). [#27](https://github.com/takashiishida/arxiv-to-prompt/issues/27)
 - Fix `--list-sections` and `--section` truncating titles containing nested braces (e.g. `\section{Proof of \ref{thm:foo}}`). [#25](https://github.com/takashiishida/arxiv-to-prompt/issues/25)
