@@ -1,5 +1,6 @@
 import os
 import io
+import sys
 import tarfile
 import shutil
 import unittest.mock
@@ -35,7 +36,7 @@ from arxiv_to_prompt.core import (
     _get_lock_path,
     _is_valid_cache_dir,
 )
-from arxiv_to_prompt.core import extract_arxiv_id
+from arxiv_to_prompt.core import extract_arxiv_id, count_tokens
 from arxiv_to_prompt.cli import main
 
 
@@ -1836,3 +1837,32 @@ Use \R here."""
     result = expand_macros(text)
     assert r"\mathbb{R}" in result
     assert r"\old" not in result
+
+
+def test_count_tokens():
+    """Test token counting with tiktoken."""
+    count = count_tokens("hello world")
+    assert isinstance(count, int)
+    assert count > 0
+
+
+def test_count_tokens_empty():
+    """Empty string should have zero tokens."""
+    assert count_tokens("") == 0
+
+
+def test_token_count_cli_flag(sample_arxiv_id, temp_cache_dir, capsys):
+    """--token-count should print token count to stderr."""
+    # Pre-populate cache so no network call is needed
+    cache_dir = temp_cache_dir / sample_arxiv_id
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "main.tex").write_text(
+        r"\documentclass{article}\begin{document}Hello world\end{document}"
+    )
+    (cache_dir / _CACHE_COMPLETE_MARKER).write_text("ok\n")
+
+    sys.argv = ["arxiv-to-prompt", sample_arxiv_id,
+                "--cache-dir", str(temp_cache_dir), "--token-count"]
+    main()
+    captured = capsys.readouterr()
+    assert "Token count:" in captured.err

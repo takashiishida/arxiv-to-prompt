@@ -1111,3 +1111,27 @@ def check_source_available(arxiv_id: str) -> bool:
         return False
     finally:
         session.close()
+
+
+def count_tokens(text: str, encoding_name: str = "cl100k_base") -> int:
+    """Count the number of tokens in text using tiktoken.
+
+    Args:
+        text: The text to tokenize.
+        encoding_name: The tiktoken encoding to use (default: cl100k_base).
+
+    Returns:
+        The token count.
+
+    Raises:
+        ImportError: If tiktoken is not installed.
+    """
+    try:
+        import tiktoken
+    except ImportError:
+        raise ImportError(
+            "tiktoken is required for token counting. "
+            "Install it with: pip install 'arxiv-to-prompt[tokens]'"
+        )
+    enc = tiktoken.get_encoding(encoding_name)
+    return len(enc.encode(text))
