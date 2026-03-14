@@ -2,9 +2,11 @@ import os
 import io
 import tarfile
 import shutil
+import unittest.mock
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import pytest
+import requests
 from filelock import FileLock
 from arxiv_to_prompt.core import (
     process_latex_source,
@@ -33,7 +35,8 @@ from arxiv_to_prompt.core import (
     _get_lock_path,
     _is_valid_cache_dir,
 )
-from arxiv_to_prompt.cli import extract_arxiv_id, main
+from arxiv_to_prompt.core import extract_arxiv_id
+from arxiv_to_prompt.cli import main
 
 
 class _FakeResponse:
@@ -425,6 +428,47 @@ def test_extract_arxiv_id():
     # Non-arxiv input returned as-is
     assert extract_arxiv_id("invalid") == "invalid"
     assert extract_arxiv_id("https://example.com/2505.18102") == "https://example.com/2505.18102"
+
+
+def test_core_functions_accept_urls(temp_cache_dir):
+    """Core API functions should accept arXiv URLs, not just bare IDs."""
+    tar = _make_tar_bytes({"main.tex": r"\documentclass{article}\begin{document}Hello\end{document}"})
+    fake_format = type("R", (), {"raise_for_status": lambda s: None, "text": "Download source"})()
+    fake_eprint = _FakeResponse(tar)
+
+    with unittest.mock.patch("arxiv_to_prompt.core.requests") as mock_req:
+        mock_session = unittest.mock.MagicMock()
+        mock_session.get.return_value = fake_format
+        mock_req.Session.return_value = mock_session
+        mock_req.adapters.HTTPAdapter = requests.adapters.HTTPAdapter
+        mock_req.get.return_value = fake_eprint
+
+        result = download_arxiv_source(
+            "https://arxiv.org/abs/2505.18102",
+            cache_dir=str(temp_cache_dir),
+        )
+        assert result is True
+
+        # The constructed URL must use the bare ID, not the full URL
+        mock_req.get.assert_called_once()
+        call_url = mock_req.get.call_args[0][0]
+        assert call_url == "https://arxiv.org/e-print/2505.18102"
+
+        # Cache directory should use the bare ID
+        assert (temp_cache_dir / "2505.18102").exists()
+
+    # process_latex_source should also accept a URL
+    with unittest.mock.patch("arxiv_to_prompt.core.download_arxiv_source", return_value=True):
+        tex = r"\documentclass{article}\begin{document}Hello\end{document}"
+        tex_path = temp_cache_dir / "2505.18102" / "main.tex"
+        tex_path.parent.mkdir(parents=True, exist_ok=True)
+        tex_path.write_text(tex)
+        result = process_latex_source(
+            "https://arxiv.org/pdf/2505.18102v2.pdf",
+            cache_dir=str(temp_cache_dir),
+        )
+        assert result is not None
+        assert "Hello" in result
 
 
 def test_list_sections():
