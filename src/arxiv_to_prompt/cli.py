@@ -7,6 +7,7 @@ from .core import (
     list_sections,
     extract_section,
     extract_arxiv_id,
+    count_tokens,
     parse_section_tree,
     format_section_tree,
     find_all_by_name,
@@ -96,6 +97,13 @@ def main():
         help="Expand \\newcommand and related macro definitions inline",
     )
 
+    parser.add_argument(
+        "--token-count",
+        action="store_true",
+        default=False,
+        help="Print the tiktoken token count to stderr (requires pip install 'arxiv-to-prompt[tokens]')",
+    )
+
     args = parser.parse_args()
 
     # Validate that either arxiv_id or local_folder is provided
@@ -166,6 +174,14 @@ def main():
 
     if output is None:
         return
+
+    if args.token_count:
+        try:
+            tokens = count_tokens(output)
+            print(f"Token count: {tokens}", file=sys.stderr)
+        except ImportError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return
 
     if args.copy:
         try:
