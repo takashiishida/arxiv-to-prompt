@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.1 (2026-03-26)
+- Fix non-UTF-8 `.tex` files (e.g., Latin-1 encoded) being silently skipped instead of processed. [#36](https://github.com/takashiishida/arxiv-to-prompt/issues/36)
+- Fix old-style arXiv IDs containing `/` (e.g., `math/0306374`) failing to download due to path construction error.
+
 ## 0.13.0 (2026-03-15)
 - **Breaking**: `--token-count` now prints just the token count to stdout instead of printing the full prompt to stdout and the count to stderr. Consistent with other output-mode flags (`--list-sections`, `--figure-paths`, `--abstract`). [#34](https://github.com/takashiishida/arxiv-to-prompt/issues/34)
 
