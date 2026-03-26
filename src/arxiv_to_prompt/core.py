@@ -60,6 +60,11 @@ def _safe_rmtree(path: Path) -> None:
         logging.warning(f"Failed to remove directory {path}: {e}")
 
 
+def _arxiv_id_to_dir_name(arxiv_id: str) -> str:
+    """Convert an arXiv ID to a safe directory name by replacing '/' with '_'."""
+    return arxiv_id.replace("/", "_")
+
+
 def _get_lock_path(base_dir: Path, arxiv_id: str) -> Path:
     """Return lock path for a given arXiv ID."""
     lock_key = hashlib.sha256(arxiv_id.encode("utf-8")).hexdigest()
@@ -105,7 +110,8 @@ def download_arxiv_source(
     arxiv_id = extract_arxiv_id(arxiv_id)
     # Use provided cache_dir or default
     base_dir = Path(cache_dir) if cache_dir else get_default_cache_dir()
-    directory = base_dir / arxiv_id
+    dir_name = _arxiv_id_to_dir_name(arxiv_id)
+    directory = base_dir / dir_name
     lock_path = _get_lock_path(base_dir, arxiv_id)
     staging_root = base_dir / ".staging"
 
@@ -143,7 +149,7 @@ def download_arxiv_source(
             headers = {'User-Agent': 'Mozilla/5.0'}
 
             # Build in isolated staging and atomically publish to cache path.
-            staging_dir = Path(tempfile.mkdtemp(prefix=f"{arxiv_id}.", dir=staging_root))
+            staging_dir = Path(tempfile.mkdtemp(prefix=f"{dir_name}.", dir=staging_root))
             extracted_dir = staging_dir / "extracted"
             tar_path = staging_dir / "source.tar"
 
@@ -1054,7 +1060,7 @@ def process_latex_source(arxiv_id: Optional[str] = None, keep_comments: bool = T
         ):
             return None
         
-        directory = base_dir / arxiv_id
+        directory = base_dir / _arxiv_id_to_dir_name(arxiv_id)
     else:
         logging.error("Either arxiv_id or local_folder must be provided")
         return None
