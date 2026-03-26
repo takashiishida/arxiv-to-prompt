@@ -225,7 +225,7 @@ def find_main_tex(directory: str) -> Optional[str]:
             if file_name in common_names:
                 file_path = os.path.join(root, file_name)
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as file:
+                    with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
                         lines = file.readlines()
                         if any('\\documentclass' in line for line in lines):
                             if rel_root == '.':
@@ -242,7 +242,7 @@ def find_main_tex(directory: str) -> Optional[str]:
             if file_name.endswith('.tex'):
                 file_path = os.path.join(root, file_name)
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as file:
+                    with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
                         lines = file.readlines()
                         if any('\\documentclass' in line for line in lines):
                             line_count = len(lines)
@@ -939,7 +939,7 @@ def flatten_tex(directory: str, main_file: str) -> str:
         processed_files.add(file_path)
         
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
                 content = f.read()
             
             # Process \input and \include commands that are not commented out
