@@ -35,6 +35,7 @@ from arxiv_to_prompt.core import (
     _CACHE_COMPLETE_MARKER,
     _get_lock_path,
     _is_valid_cache_dir,
+    _arxiv_id_to_dir_name,
 )
 from arxiv_to_prompt.core import extract_arxiv_id, count_tokens
 from arxiv_to_prompt.cli import main
@@ -1867,3 +1868,76 @@ def test_token_count_cli_flag(sample_arxiv_id, temp_cache_dir, capsys):
     captured = capsys.readouterr()
     assert captured.out.strip().isdigit()
     assert captured.err == ""
+
+
+def _make_tar_bytes_raw(files: dict) -> bytes:
+    """Build a gzipped tar archive with raw bytes (not necessarily UTF-8)."""
+    tar_buffer = io.BytesIO()
+    with tarfile.open(fileobj=tar_buffer, mode="w:gz") as tar:
+        for filename, content_bytes in files.items():
+            info = tarfile.TarInfo(name=filename)
+            info.size = len(content_bytes)
+            tar.addfile(info, io.BytesIO(content_bytes))
+    return tar_buffer.getvalue()
+
+
+def test_find_main_tex_with_latin1_encoding(tmp_path):
+    """find_main_tex should handle Latin-1 encoded .tex files."""
+    # Latin-1 encoded content: "café" has é as 0xe9 (invalid in UTF-8)
+    content = "\\documentclass{article}\n% Author: caf\xe9\n\\begin{document}\nHello\n\\end{document}\n"
+    latin1_bytes = content.encode("latin-1")
+
+    tex_file = tmp_path / "main.tex"
+    tex_file.write_bytes(latin1_bytes)
+
+    result = find_main_tex(str(tmp_path))
+    assert result == "main.tex"
+
+
+def test_flatten_tex_with_latin1_encoding(tmp_path):
+    """flatten_tex should handle Latin-1 encoded .tex files."""
+    content = "\\documentclass{article}\n\\begin{document}\nCaf\xe9 math\n\\end{document}\n"
+    latin1_bytes = content.encode("latin-1")
+
+    tex_file = tmp_path / "paper.tex"
+    tex_file.write_bytes(latin1_bytes)
+
+    result = flatten_tex(str(tmp_path), "paper.tex")
+    assert "\\documentclass{article}" in result
+    assert "math" in result
+
+
+def test_process_latex_source_with_latin1_encoding(temp_cache_dir, monkeypatch):
+    """process_latex_source should handle Latin-1 encoded .tex files end-to-end."""
+    content = "\\documentclass{article}\n\\begin{document}\nR\xe9sum\xe9\n\\end{document}\n"
+    latin1_bytes = content.encode("latin-1")
+    tar_bytes = _make_tar_bytes_raw({"main.tex": latin1_bytes})
+
+    arxiv_id = "9999.00099"
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    result = process_latex_source(arxiv_id, cache_dir=str(temp_cache_dir))
+    assert result is not None
+    assert "document" in result
+
+
+def test_download_with_old_style_arxiv_id(temp_cache_dir, monkeypatch):
+    """Old-style arXiv IDs with / (e.g., math/0306374) should download successfully."""
+    arxiv_id = "math/0306374"
+    tar_bytes = _make_tar_bytes({"paper.tex": "\\documentclass{article}\\begin{document}Hello\\end{document}"})
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(tar_bytes))
+
+    assert download_arxiv_source(arxiv_id, str(temp_cache_dir))
+    # Cache dir should use _ instead of /
+    assert (temp_cache_dir / "math_0306374").exists()
+    assert not (temp_cache_dir / "math").exists()
+
+
+def test_arxiv_id_to_dir_name():
+    """_arxiv_id_to_dir_name should replace / with _ for filesystem safety."""
+    assert _arxiv_id_to_dir_name("math/0306374") == "math_0306374"
+    assert _arxiv_id_to_dir_name("hep-th/9905111") == "hep-th_9905111"
+    assert _arxiv_id_to_dir_name("2305.18290") == "2305.18290"  # no change for new-style
