@@ -211,7 +211,7 @@ def download_arxiv_source(
 
 def find_main_tex(directory: str) -> Optional[str]:
     """
-    Find the main .tex file containing documentclass.
+    Find the main .tex file containing documentclass or documentstyle (for old papers).
     Searches recursively through subdirectories.
     First checks for common naming conventions (main.tex, paper.tex, index.tex).
     If none found, returns the path of the longest .tex file containing documentclass,
@@ -233,14 +233,14 @@ def find_main_tex(directory: str) -> Optional[str]:
                 try:
                     with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
                         lines = file.readlines()
-                        if any('\\documentclass' in line for line in lines):
+                        if any('\\documentclass' in line or '\\documentstyle' in line for line in lines):
                             if rel_root == '.':
                                 return file_name
                             return os.path.join(rel_root, file_name)
                 except Exception as e:
                     logging.warning(f"Could not read file {file_path}: {e}")
 
-    # Second pass: find the longest .tex file containing documentclass
+    # Second pass: find the longest .tex file containing documentclass or documentstyle
     for root, dirs, files in os.walk(directory):
         rel_root = os.path.relpath(root, directory)
 
@@ -250,7 +250,7 @@ def find_main_tex(directory: str) -> Optional[str]:
                 try:
                     with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
                         lines = file.readlines()
-                        if any('\\documentclass' in line for line in lines):
+                        if any('\\documentclass' in line or '\\documentstyle' in line for line in lines):
                             line_count = len(lines)
                             if line_count > max_line_count:
                                 if rel_root == '.':
