@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.13.3 (2026-04-29)
+- Fix extraction failing for arXiv papers served as a plain `.gz` file (single `.tex` file) instead of a `.tar.gz` archive. [#39](https://github.com/takashiishida/arxiv-to-prompt/issues/39) (reported by @chaisepoilue)
+
 ## 0.13.2 (2026-04-10)
 - Fix main TeX file discovery for very old papers that use `\documentstyle` instead of `\documentclass`. [#38](https://github.com/takashiishida/arxiv-to-prompt/pull/38) (contributed by @gregreen)
 
