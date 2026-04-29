@@ -1,3 +1,4 @@
+import gzip
 import os
 import io
 import sys
@@ -27,6 +28,7 @@ from arxiv_to_prompt.core import (
     _find_matching_brace,
     _parse_macro_definitions,
     _expand_single_macro,
+    _extract_plain_gzip,
     SectionNode,
     parse_section_tree,
     format_section_tree,
@@ -1941,3 +1943,75 @@ def test_arxiv_id_to_dir_name():
     assert _arxiv_id_to_dir_name("math/0306374") == "math_0306374"
     assert _arxiv_id_to_dir_name("hep-th/9905111") == "hep-th_9905111"
     assert _arxiv_id_to_dir_name("2305.18290") == "2305.18290"  # no change for new-style
+
+
+# ── Plain gzip (single .tex file) tests ─────────────────────────────────
+
+
+def _make_plain_gz_bytes(content: str) -> bytes:
+    """Compress a string with gzip (not tar), as arXiv does for single-file papers."""
+    return gzip.compress(content.encode("utf-8"))
+
+
+def test_download_plain_gzip_single_tex(temp_cache_dir, monkeypatch):
+    """A plain gzip .tex file (not tar) should be extracted successfully."""
+    arxiv_id = "1706.06280"
+    tex_content = "\\documentclass{article}\n\\begin{document}\nHello world\n\\end{document}\n"
+    gz_bytes = _make_plain_gz_bytes(tex_content)
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(gz_bytes))
+
+    assert download_arxiv_source(arxiv_id, str(temp_cache_dir))
+    cache_dir = temp_cache_dir / arxiv_id
+    assert (cache_dir / "main.tex").exists()
+    assert "\\documentclass" in (cache_dir / "main.tex").read_text()
+
+
+def test_download_plain_gzip_documentstyle(temp_cache_dir, monkeypatch):
+    """Plain gzip with \\documentstyle (old LaTeX) should also work."""
+    arxiv_id = "9999.90001"
+    tex_content = "\\documentstyle{article}\n\\begin{document}\nOld paper\n\\end{document}\n"
+    gz_bytes = _make_plain_gz_bytes(tex_content)
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(gz_bytes))
+
+    assert download_arxiv_source(arxiv_id, str(temp_cache_dir))
+    assert (temp_cache_dir / arxiv_id / "main.tex").exists()
+
+
+def test_download_plain_gzip_non_latex_rejected(temp_cache_dir, monkeypatch):
+    """A plain gzip file that is not LaTeX should be rejected."""
+    arxiv_id = "9999.90002"
+    gz_bytes = _make_plain_gz_bytes("This is not a LaTeX file at all.")
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(gz_bytes))
+
+    assert not download_arxiv_source(arxiv_id, str(temp_cache_dir))
+
+
+def test_extract_plain_gzip_validates_content(tmp_path):
+    """_extract_plain_gzip should reject non-LaTeX content."""
+    gz_path = tmp_path / "source.gz"
+    gz_path.write_bytes(gzip.compress(b"Not latex content"))
+    extract_to = tmp_path / "out"
+    extract_to.mkdir()
+
+    with pytest.raises(ValueError, match="does not appear to be a LaTeX file"):
+        _extract_plain_gzip(gz_path, extract_to)
+
+
+def test_process_latex_source_plain_gzip(temp_cache_dir, monkeypatch):
+    """End-to-end: process_latex_source should work with plain gzip sources."""
+    arxiv_id = "9999.90003"
+    tex_content = "\\documentclass{article}\n\\begin{document}\nPlain gz paper\n\\end{document}\n"
+    gz_bytes = _make_plain_gz_bytes(tex_content)
+
+    monkeypatch.setattr("arxiv_to_prompt.core.check_source_available", lambda _id: True)
+    monkeypatch.setattr("arxiv_to_prompt.core.requests.get", lambda *a, **k: _FakeResponse(gz_bytes))
+
+    result = process_latex_source(arxiv_id, cache_dir=str(temp_cache_dir))
+    assert result is not None
+    assert "Plain gz paper" in result

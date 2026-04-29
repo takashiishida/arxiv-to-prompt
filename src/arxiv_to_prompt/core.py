@@ -1,3 +1,4 @@
+import gzip
 import logging
 import os
 import tarfile
@@ -87,6 +88,25 @@ def _extract_tar_safely(tar_path: Path, extract_to: Path) -> None:
             tar.extractall(path=extract_to)
 
 
+def _extract_plain_gzip(gz_path: Path, extract_to: Path) -> None:
+    """Decompress a plain gzip file (not a tar archive) into extract_to.
+
+    Some arXiv papers consist of a single .tex file served as a plain .gz
+    file rather than a tar.gz archive. This function handles that case by
+    decompressing the gzip content, verifying it looks like LaTeX, and
+    writing it as ``main.tex``.
+
+    Raises:
+        ValueError: If the decompressed content does not look like a LaTeX file.
+    """
+    with gzip.open(gz_path, "rb") as f:
+        data = f.read()
+    text = data.decode("utf-8", errors="replace")
+    if "\\documentclass" not in text and "\\documentstyle" not in text:
+        raise ValueError("Decompressed gzip content does not appear to be a LaTeX file")
+    (extract_to / "main.tex").write_bytes(data)
+
+
 def download_arxiv_source(
     arxiv_id: str,
     cache_dir: Optional[str] = None,
@@ -160,7 +180,11 @@ def download_arxiv_source(
                     file.write(response.content)
 
                 extracted_dir.mkdir(parents=True, exist_ok=True)
-                _extract_tar_safely(tar_path, extracted_dir)
+                try:
+                    _extract_tar_safely(tar_path, extracted_dir)
+                except (tarfile.TarError, ValueError):
+                    # Not a tar archive — try plain gzip (single .tex file).
+                    _extract_plain_gzip(tar_path, extracted_dir)
 
                 if not _cache_has_tex_files(extracted_dir):
                     raise ValueError("Downloaded archive does not contain any .tex files")
