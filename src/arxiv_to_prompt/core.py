@@ -17,6 +17,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 _CACHE_COMPLETE_MARKER = ".arxiv_cache_complete"
 
+# Plain TeX document terminator: \bye or \end (not \end{...} or \endinsert).
+# Old papers (e.g. harvmac-based hep-th submissions) have no \documentclass;
+# the terminator marks the main document, since a macro file containing one
+# would halt the TeX run when \input.
+_PLAIN_TEX_TERMINATOR_RE = re.compile(r'\\(?:bye|end)(?![a-zA-Z{])')
+
 
 def extract_arxiv_id(input_str: str) -> str:
     """Extract arxiv ID from URL or return input as-is if already an ID."""
@@ -93,16 +99,20 @@ def _extract_plain_gzip(gz_path: Path, extract_to: Path) -> None:
 
     Some arXiv papers consist of a single .tex file served as a plain .gz
     file rather than a tar.gz archive. This function handles that case by
-    decompressing the gzip content, verifying it looks like LaTeX, and
+    decompressing the gzip content, verifying it looks like (La)TeX, and
     writing it as ``main.tex``.
 
     Raises:
-        ValueError: If the decompressed content does not look like a LaTeX file.
+        ValueError: If the decompressed content does not look like a TeX file.
     """
     with gzip.open(gz_path, "rb") as f:
         data = f.read()
     text = data.decode("utf-8", errors="replace")
-    if "\\documentclass" not in text and "\\documentstyle" not in text:
+    if (
+        "\\documentclass" not in text
+        and "\\documentstyle" not in text
+        and not _PLAIN_TEX_TERMINATOR_RE.search(text)
+    ):
         raise ValueError("Decompressed gzip content does not appear to be a LaTeX file")
     (extract_to / "main.tex").write_bytes(data)
 
@@ -241,6 +251,9 @@ def find_main_tex(directory: str) -> Optional[str]:
     If none found, returns the path of the longest .tex file containing documentclass,
     since shorter files are typically conference templates or supplementary documents
     rather than the main manuscript.
+    If no file contains documentclass or documentstyle at all, falls back to the
+    longest .tex file with a plain TeX terminator (\\bye or \\end), which covers
+    plain TeX papers such as old harvmac-based hep-th submissions.
     """
     common_names = ['main.tex', 'paper.tex', 'index.tex']
     main_tex_file = None
@@ -275,6 +288,31 @@ def find_main_tex(directory: str) -> Optional[str]:
                     with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
                         lines = file.readlines()
                         if any('\\documentclass' in line or '\\documentstyle' in line for line in lines):
+                            line_count = len(lines)
+                            if line_count > max_line_count:
+                                if rel_root == '.':
+                                    main_tex_file = file_name
+                                else:
+                                    main_tex_file = os.path.join(rel_root, file_name)
+                                max_line_count = line_count
+                except Exception as e:
+                    logging.warning(f"Could not read file {file_path}: {e}")
+
+    if main_tex_file:
+        return main_tex_file
+
+    # Third pass: no documentclass/documentstyle anywhere — likely a plain TeX
+    # paper. The main document is the longest .tex file with a terminator.
+    for root, dirs, files in os.walk(directory):
+        rel_root = os.path.relpath(root, directory)
+
+        for file_name in files:
+            if file_name.endswith('.tex'):
+                file_path = os.path.join(root, file_name)
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
+                        lines = file.readlines()
+                        if any(_PLAIN_TEX_TERMINATOR_RE.search(line) for line in lines):
                             line_count = len(lines)
                             if line_count > max_line_count:
                                 if rel_root == '.':
