@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.14.1 (2026-08-24)
+- Fix "Main .tex file not found" for plain TeX papers without `\documentclass` (e.g. old harvmac-based hep-th submissions such as 0808.1725). Also accept such papers when served as a plain `.gz` file. [#41](https://github.com/takashiishida/arxiv-to-prompt/issues/41) (reported by @chaisepoilue)
+
 ## 0.14.0 (2026-06-11)
 - Change the default tiktoken encoding for `--token-count` and `count_tokens()` from `cl100k_base` to `o200k_base`, matching current OpenAI models (GPT-4o and the GPT-5 series). Counts shift slightly (~0.5%) compared to previous versions. Pass `encoding_name="cl100k_base"` to `count_tokens()` for the old behavior.
 - Fix `--token-count` crashing when the paper text contains literal special-token strings such as `<|endofprompt|>` (e.g., the GPT-4 report, 2303.08774). These are now counted as plain text.
