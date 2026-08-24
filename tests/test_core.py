@@ -229,6 +229,51 @@ def test_find_main_tex_in_subdirectory(temp_cache_dir):
     assert found_main == os.path.join("paper", "main.tex")
 
 
+def test_find_main_tex_plain_tex(temp_cache_dir):
+    """Plain TeX papers (no documentclass, e.g. harvmac) should be found (issue #41)."""
+    tex_dir = temp_cache_dir / "test_plain_tex"
+    tex_dir.mkdir(parents=True)
+
+    # Mimic arXiv 0808.1725: a harvmac document terminated by \end
+    draft = tex_dir / "draft7.tex"
+    draft.write_text(
+        "\\input harvmac\n\\input epsf.sty\n"
+        "\\Title{Some Paper}\nBody text.\n\\listrefs\n\\end\n"
+    )
+
+    assert find_main_tex(str(tex_dir)) == "draft7.tex"
+
+
+def test_find_main_tex_plain_tex_prefers_document_over_macro_file(temp_cache_dir):
+    """The document (with \\bye) should win over a longer macro file without a terminator."""
+    tex_dir = temp_cache_dir / "test_plain_tex_macros"
+    tex_dir.mkdir(parents=True)
+
+    # A long macro package shipped alongside the paper; \endinsert must not
+    # count as a terminator.
+    macros = tex_dir / "harvmac.tex"
+    macros.write_text("\\def\\endinsert{}\n" + "\\def\\foo{bar}\n" * 100)
+
+    paper = tex_dir / "paper2.tex"
+    paper.write_text("\\input harvmac\nShort paper body.\n\\bye\n")
+
+    assert find_main_tex(str(tex_dir)) == "paper2.tex"
+
+
+def test_find_main_tex_prefers_documentclass_over_plain_tex(temp_cache_dir):
+    """A LaTeX file with documentclass should still win over a plain TeX file."""
+    tex_dir = temp_cache_dir / "test_latex_priority"
+    tex_dir.mkdir(parents=True)
+
+    latex_file = tex_dir / "article.tex"
+    latex_file.write_text("\\documentclass{article}\n\\begin{document}\nHi\n\\end{document}")
+
+    plain_file = tex_dir / "notes.tex"
+    plain_file.write_text("Some plain TeX notes.\nMore lines.\nEven more.\n\\bye\n")
+
+    assert find_main_tex(str(tex_dir)) == "article.tex"
+
+
 def test_commented_input_commands(temp_cache_dir):
     """Test that commented-out \\include and \\input commands are ignored."""
     # Create test directory and files
@@ -2001,6 +2046,17 @@ def test_extract_plain_gzip_validates_content(tmp_path):
 
     with pytest.raises(ValueError, match="does not appear to be a LaTeX file"):
         _extract_plain_gzip(gz_path, extract_to)
+
+
+def test_extract_plain_gzip_accepts_plain_tex(tmp_path):
+    """_extract_plain_gzip should accept plain TeX content without documentclass."""
+    gz_path = tmp_path / "source.gz"
+    gz_path.write_bytes(gzip.compress(b"\\input harvmac\nPaper body.\n\\bye\n"))
+    extract_to = tmp_path / "out"
+    extract_to.mkdir()
+
+    _extract_plain_gzip(gz_path, extract_to)
+    assert (extract_to / "main.tex").read_text() == "\\input harvmac\nPaper body.\n\\bye\n"
 
 
 def test_process_latex_source_plain_gzip(temp_cache_dir, monkeypatch):
