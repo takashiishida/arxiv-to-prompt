@@ -1,0 +1,23 @@
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
