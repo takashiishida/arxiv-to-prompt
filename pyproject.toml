@@ -9,10 +9,10 @@ description = "transform arXiv papers into a single latex prompt for LLMs"
 readme = "README.md"
 authors = [{ name = "Takashi Ishida" }]
 license = { text = "MIT" }
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 dependencies = [
     "requests>=2.25.0",
-    "filelock>=3.0.0",
+    "filelock>=4.2.1",
     "pyperclip>=1.8.0",
 ]
 
