@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0 (2026-11-23)
+- Require Python 3.11 or newer. Python 3.8, 3.9 and 3.10 are past end-of-life; pip keeps installing 0.14.1 on those versions.
+- Require filelock 4.2.1 or newer, which fixes a local file-overwrite vulnerability in `ReadWriteLock`. arxiv-to-prompt only uses `FileLock`, so earlier releases were not exposed.
+- Test on Python 3.11, 3.12, 3.13 and 3.14.
+
 ## 0.14.1 (2026-08-24)
 - Fix "Main .tex file not found" for plain TeX papers without `\documentclass` (e.g. old harvmac-based hep-th submissions such as 0808.1725). Also accept such papers when served as a plain `.gz` file. [#41](https://github.com/takashiishida/arxiv-to-prompt/issues/41) (reported by @chaisepoilue)
 
